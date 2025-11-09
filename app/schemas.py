@@ -37,8 +37,12 @@ class LLMIncidentOut(BaseModel):
     """
     category: str
     priority: str
-    urgency: Optional[str] = None
-    team: str
-    assignee: Optional[str] = None
-    auto_assign: bool
-    reasoning: str
+    urgency: str | None = None
+    team: str | None = None
+    assignee: str | None = None
+    auto_assign: bool = False
+    reasoning: str | None = None
+
+    # Нові поля з ML-частини
+    ml_priority: str | None = None
+    ml_priority_confidence: float | None = None
