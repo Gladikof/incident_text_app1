@@ -1,12 +1,15 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .schemas import IncidentIn, LLMIncidentOut
 from .llm_router import route_with_llm
 from .ml_model import ml_model
+from .database import Base, engine
+from .routers import assets, departments, tickets, users
 
 # === Шляхи ===
 # __file__ -> ...\incident_text_app\app\main.py
@@ -25,16 +28,37 @@ app = FastAPI(
     ),
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.on_event("startup")
-def _load_ml():
+def _on_startup():
     """
     Завантаження ML-моделі при старті бекенду.
     """
     try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print("[DB] ❌ Не вдалося ініціалізувати базу даних:", e)
+
+    try:
         ml_model.load()
     except Exception as e:
         print("[ML] ❌ Не вдалося завантажити модель:", e)
+
+
+# === ITSM routers ===
+
+app.include_router(departments.router)
+app.include_router(users.router)
+app.include_router(assets.router)
+app.include_router(tickets.router)
 
 
 # === API ===
