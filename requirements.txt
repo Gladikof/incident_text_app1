@@ -9,3 +9,5 @@ joblib>=1.4.2,<2.0
 datasets>=2.21.0,<3.0
 deep-translator>=1.11.4,<2.0
 openai>=1.51.0
+SQLAlchemy>=2.0.35,<3.0
+

@@ -1,315 +1,878 @@
 <!DOCTYPE html>
-<html lang="uk">
-<head>
+<html lang="en">
+  <head>
     <meta charset="UTF-8" />
-    <title>LLM-маршрутизація інцидентів</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Incident Desk ITSM</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/2.0.0/modern-normalize.min.css"
+      integrity="sha512-2w1l0gV0QPCMx4abQlBAZnObYfhvPNZL/UTADKdxB2YnCUaguG1fsym0B9rZkjS7gPP8UMYRVdPBi0Pkx4Ahxw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <style>
-        body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: #0f172a;
-            margin: 0;
-            padding: 0;
+      body {
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f4f6fb;
+        color: #1f2937;
+        margin: 0;
+      }
+      header {
+        background: #1d4ed8;
+        color: white;
+        padding: 1.5rem 2rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+      main {
+        padding: 1.5rem 2rem 3rem 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      .card h2 {
+        margin-top: 0;
+        font-size: 1.25rem;
+        color: #0f172a;
+      }
+      select,
+      input,
+      textarea,
+      button {
+        font: inherit;
+      }
+      select,
+      input,
+      textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        background: #f8fafc;
+      }
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+      button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #1d4ed8;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        transition: background 0.2s ease-in-out;
+      }
+      button.secondary {
+        background: #475569;
+      }
+      button:hover {
+        background: #1e40af;
+      }
+      button.secondary:hover {
+        background: #334155;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      th {
+        font-weight: 600;
+        color: #0f172a;
+      }
+      tr:hover {
+        background: #eff6ff;
+      }
+      .flex {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .flex > * {
+        flex: 1 1 280px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 0.2rem 0.75rem;
+        font-size: 0.75rem;
+        background: #e0e7ff;
+        color: #312e81;
+        margin-right: 0.35rem;
+      }
+      .status-new {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .status-in_progress {
+        background: #e0f2fe;
+        color: #075985;
+      }
+      .status-resolved {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .status-closed {
+        background: #e2e8f0;
+        color: #334155;
+      }
+      .priority-P1 {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .priority-P2 {
+        background: #fcd34d;
+        color: #92400e;
+      }
+      .priority-P3 {
+        background: #c7d2fe;
+        color: #3730a3;
+      }
+      .priority-P4,
+      .priority-P5 {
+        background: #d1fae5;
+        color: #047857;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      .ticket-row {
+        cursor: pointer;
+      }
+      .ticket-row.active {
+        background: #dbeafe;
+      }
+      .muted {
+        color: #64748b;
+        font-size: 0.85rem;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        padding: 0.2rem 0.45rem;
+        font-size: 0.75rem;
+        background: #f1f5f9;
+        color: #1e293b;
+        margin-right: 0.3rem;
+      }
+      .layout-two {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 960px) {
+        .layout-two {
+          grid-template-columns: 1fr;
         }
-        .page {
-            max-width: 900px;
-            margin: 40px auto;
-            background: #020617;
-            padding: 24px 28px 32px;
-            border-radius: 18px;
-            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.8);
-            border: 1px solid #1e293b;
-            color: #e5e7eb;
-        }
-        h1 {
-            margin-top: 0;
-            font-size: 24px;
-            color: #e5e7eb;
-        }
-        p.subtitle {
-            margin-top: 4px;
-            margin-bottom: 24px;
-            color: #9ca3af;
-            font-size: 14px;
-        }
-        label {
-            font-weight: 600;
-            font-size: 14px;
-            color: #cbd5f5;
-            display: block;
-            margin-bottom: 6px;
-        }
-        input[type="text"], textarea {
-            width: 100%;
-            box-sizing: border-box;
-            border-radius: 10px;
-            border: 1px solid #1f2937;
-            padding: 10px 12px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-            background: #020617;
-            color: #e5e7eb;
-            resize: vertical;
-        }
-        input[type="text"]:focus,
-        textarea:focus {
-            border-color: #38bdf8;
-            box-shadow: 0 0 0 1px #38bdf8;
-            background: #020617;
-        }
-        textarea {
-            min-height: 130px;
-        }
-        .form-row {
-            margin-bottom: 16px;
-        }
-        button {
-            border: none;
-            border-radius: 999px;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            background: radial-gradient(circle at 0 0, #22c55e, #0ea5e9);
-            color: #0b1120;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 8px 30px rgba(34, 197, 94, 0.5);
-            transition: transform 0.1s, box-shadow 0.1s, opacity 0.1s;
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: default;
-            box-shadow: none;
-        }
-        button:not(:disabled):hover {
-            transform: translateY(-1px);
-            box-shadow: 0 12px 40px rgba(56, 189, 248, 0.7);
-        }
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .badge-team {
-            background: #1d293b;
-            color: #e5e7eb;
-        }
-        .badge-p1 {
-            background: #7f1d1d;
-            color: #fee2e2;
-        }
-        .badge-p2 {
-            background: #78350f;
-            color: #fef3c7;
-        }
-        .badge-p3 {
-            background: #14532d;
-            color: #dcfce7;
-        }
-        .badge-urg-high {
-            background: #b91c1c;
-            color: #fee2e2;
-        }
-        .badge-urg-med {
-            background: #92400e;
-            color: #ffedd5;
-        }
-        .badge-urg-low {
-            background: #065f46;
-            color: #d1fae5;
-        }
-        .results {
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 1px solid #1e293b;
-        }
-        .explanation {
-            margin-top: 10px;
-            background: #020617;
-            border-radius: 10px;
-            padding: 10px 12px;
-            font-size: 13px;
-            color: #e5e7eb;
-            border: 1px dashed #1e293b;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 11px;
-            color: #6b7280;
-            text-align: right;
-        }
-        .error {
-            color: #fecaca;
-            font-size: 13px;
-            margin-top: 8px;
-        }
-        .pill {
-            border-radius: 999px;
-            border: 1px solid #1e293b;
-            padding: 6px 10px;
-            font-size: 12px;
-            display: inline-flex;
-            gap: 6px;
-            align-items: center;
-        }
-        .pill-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: #22c55e;
-        }
+      }
     </style>
-</head>
-<body>
-<div class="page">
-    <h1>LLM-маршрутизація інцидентів</h1>
-    <p class="subtitle">
-        Інтелектуальний маршрутизатор на базі локальної мовної моделі (через Ollama):
-        визначає категорію, пріоритет, терміновість, команду та можливість авто-призначення.
-    </p>
+  </head>
+  <body>
+    <header>
+      <h1>Incident Desk ITSM</h1>
+      <p style="margin-top: 0.35rem; opacity: 0.85">
+        Lightweight GLPI-inspired console on top of the incident classifier
+      </p>
+    </header>
+    <main>
+      <div id="root"></div>
+    </main>
 
-    <div class="form-row">
-        <label for="title">Заголовок</label>
-        <input id="title" type="text" placeholder="Наприклад: Весь офіс втратив доступ до VPN">
-    </div>
-    <div class="form-row">
-        <label for="description">Опис інциденту</label>
-        <textarea id="description" placeholder="Опишіть симптоми, масштаб проблеми, кількість користувачів, вплив на бізнес..."></textarea>
-    </div>
-    <div class="form-row">
-        <button id="submitBtn">🤖 Класифікувати (LLM)</button>
-        <span id="status" class="error"></span>
-    </div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <div class="results" id="results-block" style="display: none;">
-        <div id="main-result"></div>
-        <div class="explanation" id="explanation"></div>
-    </div>
+    <script type="text/babel">
+      const { useState, useEffect, useMemo } = React;
+      const API_BASE = window.API_BASE || window.location.origin;
 
-    <div class="footer">
-        LLM routing · /classify_llm · Service Desk prototype
-    </div>
-</div>
+      async function apiRequest(path, { method = "GET", body, userId } = {}) {
+        const headers = { "Content-Type": "application/json" };
+        if (userId) {
+          headers["X-User-Id"] = String(userId);
+        }
+        const response = await fetch(`${API_BASE}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `Request failed with ${response.status}`);
+        }
+        if (response.status === 204) {
+          return null;
+        }
+        return response.json();
+      }
 
-<script>
-    const btn = document.getElementById("submitBtn");
-    const statusEl = document.getElementById("status");
-    const resultsBlock = document.getElementById("results-block");
-    const mainResult = document.getElementById("main-result");
-    const explanation = document.getElementById("explanation");
+      const statusOrder = ["new", "in_progress", "resolved", "closed"];
 
-    function priorityBadgeClass(priority) {
-        if (!priority) return "badge";
-        const p = priority.toUpperCase();
-        if (p === "P1") return "badge badge-p1";
-        if (p === "P2") return "badge badge-p2";
-        if (p === "P3") return "badge badge-p3";
-        return "badge";
-    }
+      function UserSwitcher({ users, currentUserId, onChange }) {
+        return (
+          <div className="card">
+            <h2>Login / switch user</h2>
+            <p className="muted">
+              Pick a user to impersonate. The backend expects an <code>X-User-Id</code> header,
+              and the UI keeps everything in sync for you.
+            </p>
+            <select value={currentUserId ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+              <option value="">Select user…</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.full_name} — {user.role}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
 
-    function urgencyBadgeClass(urg) {
-        if (!urg) return "badge";
-        const u = urg.toUpperCase();
-        if (u === "HIGH") return "badge badge-urg-high";
-        if (u === "MEDIUM") return "badge badge-urg-med";
-        if (u === "LOW") return "badge badge-urg-low";
-        return "badge";
-    }
+      function TicketFilters({ filters, onChange, departments }) {
+        return (
+          <div className="filters">
+            <select
+              value={filters.status}
+              onChange={(e) => onChange({ ...filters, status: e.target.value })}
+            >
+              <option value="">All statuses</option>
+              {statusOrder.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace("_", " ")}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filters.priority}
+              onChange={(e) => onChange({ ...filters, priority: e.target.value })}
+            >
+              <option value="">All priorities</option>
+              {["P1", "P2", "P3", "P4", "P5"].map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filters.department}
+              onChange={(e) => onChange({ ...filters, department: e.target.value })}
+            >
+              <option value="">All departments</option>
+              {departments.map((dep) => (
+                <option key={dep.id} value={dep.name}>
+                  {dep.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
 
-    btn.addEventListener("click", async () => {
-        statusEl.textContent = "";
-        resultsBlock.style.display = "none";
-        mainResult.innerHTML = "";
-        explanation.textContent = "";
+      function TicketsTable({ tickets, onSelect, selectedTicketId }) {
+        return (
+          <div className="card">
+            <h2>Tickets</h2>
+            {tickets.length === 0 ? (
+              <p className="muted">No tickets in this scope yet.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((ticket) => (
+                    <tr
+                      key={ticket.id}
+                      className={`ticket-row ${selectedTicketId === ticket.id ? "active" : ""}`}
+                      onClick={() => onSelect(ticket)}
+                    >
+                      <td>{ticket.id}</td>
+                      <td>{ticket.title}</td>
+                      <td>{ticket.requester_name ?? ticket.requester_id}</td>
+                      <td>{ticket.department_name ?? "—"}</td>
+                      <td>
+                        <span className={`chip status-${ticket.status}`}>{ticket.status.replace("_", " ")}</span>
+                      </td>
+                      <td>
+                        <span className={`chip priority-${ticket.priority}`}>{ticket.priority}</span>
+                      </td>
+                      <td>{new Date(ticket.created_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+      }
 
-        const title = document.getElementById("title").value.trim();
-        const desc = document.getElementById("description").value.trim();
-
-        if (!title && !desc) {
-            statusEl.textContent = "Введіть хоча б заголовок або опис інциденту.";
-            return;
+      function TicketDetails({ ticket, currentUser, onUpdateStatus }) {
+        if (!ticket) {
+          return (
+            <div className="card">
+              <h2>Ticket details</h2>
+              <p className="muted">Select a ticket to inspect ML insights and workflow actions.</p>
+            </div>
+          );
         }
 
-        btn.disabled = true;
-        btn.textContent = "⏳ Обробка...";
-        try {
-            const resp = await fetch("/classify_llm", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "accept": "application/json"
-                },
-                body: JSON.stringify({ title: title, description: desc })
+        const canUpdate = currentUser && ["admin", "agent"].includes(currentUser.role);
+
+        return (
+          <div className="card">
+            <h2>Ticket #{ticket.id}</h2>
+            <p className="muted" style={{ marginTop: "-0.5rem", marginBottom: "1rem" }}>
+              ML priority {ticket.ml_priority ?? "—"} with confidence {ticket.ml_confidence?.toFixed(2) ?? "—"}
+            </p>
+            <p><strong>Title:</strong> {ticket.title}</p>
+            <p><strong>Description:</strong></p>
+            <p style={{ whiteSpace: "pre-wrap", background: "#f8fafc", padding: "0.75rem", borderRadius: "8px" }}>
+              {ticket.description}
+            </p>
+            <p>
+              <strong>Requester:</strong> {ticket.requester_name ?? ticket.requester_id}
+            </p>
+            <p>
+              <strong>Department:</strong> {ticket.department_name ?? "—"}
+            </p>
+            <p>
+              <strong>Assets:</strong> {ticket.affected_asset_ids.length ? ticket.affected_asset_ids.join(", ") : "—"}
+            </p>
+            <p>
+              <strong>Status:</strong> <span className={`chip status-${ticket.status}`}>{ticket.status.replace("_", " ")}</span>
+            </p>
+            <p>
+              <strong>Priority:</strong> <span className={`chip priority-${ticket.priority}`}>{ticket.priority}</span>
+            </p>
+            <p className="muted">Updated: {new Date(ticket.updated_at).toLocaleString()}</p>
+
+            {canUpdate && (
+              <div style={{ marginTop: "1rem" }}>
+                <label htmlFor="ticket-status">Update status</label>
+                <select
+                  id="ticket-status"
+                  defaultValue={ticket.status}
+                  onChange={(e) => onUpdateStatus(ticket.id, { status: e.target.value })}
+                >
+                  {statusOrder.map((status) => (
+                    <option key={status} value={status}>
+                      {status.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+                <label htmlFor="ticket-priority">Update priority</label>
+                <select
+                  id="ticket-priority"
+                  defaultValue={ticket.priority}
+                  onChange={(e) => onUpdateStatus(ticket.id, { priority: e.target.value })}
+                >
+                  {["P1", "P2", "P3", "P4", "P5"].map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function TicketCreator({ currentUser, userAssets, onCreate }) {
+        const [form, setForm] = useState({ title: "", description: "", assets: [] });
+        const [submitting, setSubmitting] = useState(false);
+        const [error, setError] = useState(null);
+
+        useEffect(() => {
+          setForm({ title: "", description: "", assets: [] });
+          setError(null);
+        }, [currentUser]);
+
+        const toggleAsset = (assetId) => {
+          setForm((prev) => {
+            const has = prev.assets.includes(assetId);
+            return {
+              ...prev,
+              assets: has ? prev.assets.filter((id) => id !== assetId) : [...prev.assets, assetId],
+            };
+          });
+        };
+
+        if (!currentUser) {
+          return null;
+        }
+
+        const onSubmit = async (event) => {
+          event.preventDefault();
+          setSubmitting(true);
+          setError(null);
+          try {
+            await onCreate({
+              requester_id: currentUser.id,
+              title: form.title,
+              description: form.description,
+              affected_asset_ids: form.assets,
             });
+            setForm({ title: "", description: "", assets: [] });
+          } catch (err) {
+            setError(err.message);
+          } finally {
+            setSubmitting(false);
+          }
+        };
 
-            if (!resp.ok) {
-                const txt = await resp.text();
-                statusEl.textContent = "Помилка запиту: " + resp.status + " " + txt;
-                return;
-            }
-
-            const data = await resp.json();
-            console.log(data);
-
-            const cat = data.category || "-";
-            const pri = data.priority || "-";
-            const urg = data.urgency || "-";
-            const team = data.team || "-";
-            const assignee = data.assignee || "не визначено";
-            const autoAssign = data.auto_assign ? "Так, авто-призначення дозволено" : "Ні, потрібна ручна перевірка";
-
-            const mlPri = data.ml_priority || "-";
-            const mlConf = (data.ml_priority_confidence != null)
-                ? (data.ml_priority_confidence * 100).toFixed(1) + "%"
-                : "-";
-
-            const priClass = priorityBadgeClass(pri);
-            const urgClass = urgencyBadgeClass(urg);
-
-            mainResult.innerHTML = `
-                <div style="display:flex;flex-direction:column;gap:10px;">
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                        <span class="badge badge-team">Категорія (LLM): ${cat}</span>
-                        <span class="${priClass}">Пріоритет (LLM): ${pri}</span>
-                        <span class="${urgClass}">Терміновість: ${urg}</span>
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                        <span class="pill">
-                            <span class="pill-dot"></span>
-                            Команда: <strong>${team}</strong>
-                        </span>
-                        <span class="pill">
-                            Виконавець: <strong>${assignee}</strong>
-                        </span>
-                        <span class="pill">
-                            Авто-призначення: <strong>${autoAssign}</strong>
-                        </span>
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;">
-                        <span class="pill">
-                            🧠 ML-пріоритет: <strong>${mlPri}</strong>
-                            <span style="opacity:0.7;">(${mlConf})</span>
-                        </span>
-                    </div>
+        return (
+          <div className="card">
+            <h2>Create ticket</h2>
+            <form onSubmit={onSubmit}>
+              <input
+                type="text"
+                placeholder="Title"
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+              <textarea
+                placeholder="Describe the incident"
+                required
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+              {userAssets.length > 0 && (
+                <div style={{ marginBottom: "0.75rem" }}>
+                  <p className="muted" style={{ marginBottom: "0.35rem" }}>
+                    Select affected assets (defaults to primary assets if left empty)
+                  </p>
+                  {userAssets.map((asset) => (
+                    <label key={asset.id} style={{ display: "block", marginBottom: "0.25rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={form.assets.includes(asset.id)}
+                        onChange={() => toggleAsset(asset.id)}
+                      />
+                      <span style={{ marginLeft: "0.5rem" }}>
+                        {asset.type} — {asset.model} ({asset.business_criticality})
+                      </span>
+                    </label>
+                  ))}
                 </div>
-            `;
+              )}
+              {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
+              <button type="submit" disabled={submitting}>
+                {submitting ? "Submitting…" : "Submit ticket"}
+              </button>
+            </form>
+          </div>
+        );
+      }
 
-            explanation.textContent = data.reasoning || "Модель не надала явного пояснення.";
+      function AdminPanel({
+        currentUser,
+        users,
+        departments,
+        onCreateDepartment,
+        onCreateAsset,
+        onUpdateRole,
+        assets,
+        onLinkAsset,
+      }) {
+        const [departmentForm, setDepartmentForm] = useState({ name: "", business_criticality: "medium" });
+        const [assetForm, setAssetForm] = useState({
+          type: "",
+          model: "",
+          serial_number: "",
+          business_criticality: "medium",
+        });
+        const [linkForm, setLinkForm] = useState({ userId: "", assetId: "", isPrimary: false });
 
-            resultsBlock.style.display = "block";
-
-        } catch (err) {
-            console.error(err);
-            statusEl.textContent = "Не вдалося виконати запит: " + err;
-        } finally {
-            btn.disabled = false;
-            btn.textContent = "🤖 Класифікувати (LLM)";
+        if (!currentUser || currentUser.role !== "admin") {
+          return null;
         }
-    });
-</script>
-</body>
+
+        const submitDepartment = async (event) => {
+          event.preventDefault();
+          await onCreateDepartment(departmentForm);
+          setDepartmentForm({ name: "", business_criticality: "medium" });
+        };
+
+        const submitAsset = async (event) => {
+          event.preventDefault();
+          await onCreateAsset(assetForm);
+          setAssetForm({ type: "", model: "", serial_number: "", business_criticality: "medium" });
+        };
+
+        const submitLink = async (event) => {
+          event.preventDefault();
+          if (!linkForm.userId || !linkForm.assetId) return;
+          await onLinkAsset(linkForm);
+          setLinkForm({ userId: "", assetId: "", isPrimary: false });
+        };
+
+        return (
+          <div className="card">
+            <h2>Admin panel</h2>
+            <div className="flex">
+              <div>
+                <h3>Users</h3>
+                {users.map((user) => (
+                  <div key={user.id} style={{ marginBottom: "0.5rem" }}>
+                    <strong>{user.full_name}</strong>
+                    <span className="badge">{user.role}</span>
+                    <span className="muted">{user.email}</span>
+                    <select
+                      style={{ marginTop: "0.35rem" }}
+                      value={user.role}
+                      onChange={(e) => onUpdateRole(user.id, e.target.value)}
+                    >
+                      {['admin','agent','requester'].map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h3>Create department</h3>
+                <form onSubmit={submitDepartment}>
+                  <input
+                    placeholder="Name"
+                    required
+                    value={departmentForm.name}
+                    onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })}
+                  />
+                  <select
+                    value={departmentForm.business_criticality}
+                    onChange={(e) => setDepartmentForm({ ...departmentForm, business_criticality: e.target.value })}
+                  >
+                    <option value="high">high</option>
+                    <option value="medium">medium</option>
+                    <option value="low">low</option>
+                  </select>
+                  <button type="submit">Create department</button>
+                </form>
+
+                <h3 style={{ marginTop: "1.5rem" }}>Create asset</h3>
+                <form onSubmit={submitAsset}>
+                  <input
+                    placeholder="Type"
+                    required
+                    value={assetForm.type}
+                    onChange={(e) => setAssetForm({ ...assetForm, type: e.target.value })}
+                  />
+                  <input
+                    placeholder="Model"
+                    required
+                    value={assetForm.model}
+                    onChange={(e) => setAssetForm({ ...assetForm, model: e.target.value })}
+                  />
+                  <input
+                    placeholder="Serial number (optional)"
+                    value={assetForm.serial_number}
+                    onChange={(e) => setAssetForm({ ...assetForm, serial_number: e.target.value })}
+                  />
+                  <select
+                    value={assetForm.business_criticality}
+                    onChange={(e) => setAssetForm({ ...assetForm, business_criticality: e.target.value })}
+                  >
+                    <option value="high">high</option>
+                    <option value="medium">medium</option>
+                    <option value="low">low</option>
+                  </select>
+                  <button type="submit">Create asset</button>
+                </form>
+
+                <h3 style={{ marginTop: "1.5rem" }}>Assign asset to user</h3>
+                <form onSubmit={submitLink}>
+                  <select
+                    value={linkForm.userId}
+                    onChange={(e) => setLinkForm({ ...linkForm, userId: e.target.value })}
+                  >
+                    <option value="">Select user</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={linkForm.assetId}
+                    onChange={(e) => setLinkForm({ ...linkForm, assetId: e.target.value })}
+                  >
+                    <option value="">Select asset</option>
+                    {assets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.type} — {asset.model}
+                      </option>
+                    ))}
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={linkForm.isPrimary}
+                      onChange={(e) => setLinkForm({ ...linkForm, isPrimary: e.target.checked })}
+                    />
+                    Primary asset
+                  </label>
+                  <button type="submit">Link asset</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function RegistrationPanel({ departments, onRegister }) {
+        const [form, setForm] = useState({ full_name: "", email: "", department_id: "", role: "requester" });
+        const [message, setMessage] = useState(null);
+        const [error, setError] = useState(null);
+
+        const submit = async (event) => {
+          event.preventDefault();
+          setMessage(null);
+          setError(null);
+          try {
+            await onRegister({
+              full_name: form.full_name,
+              email: form.email,
+              department_id: form.department_id ? Number(form.department_id) : null,
+              role: "requester",
+            });
+            setMessage("Requester registered. Use the switcher above to impersonate the new user.");
+            setForm({ full_name: "", email: "", department_id: "", role: "requester" });
+          } catch (err) {
+            setError(err.message);
+          }
+        };
+
+        return (
+          <div className="card">
+            <h2>Self-registration</h2>
+            <p className="muted">Quickly add a requester without an admin account.</p>
+            <form onSubmit={submit}>
+              <input
+                placeholder="Full name"
+                required
+                value={form.full_name}
+                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              />
+              <input
+                placeholder="Email"
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+              <select
+                value={form.department_id}
+                onChange={(e) => setForm({ ...form, department_id: e.target.value })}
+              >
+                <option value="">No department</option>
+                {departments.map((dep) => (
+                  <option key={dep.id} value={dep.id}>
+                    {dep.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit">Register requester</button>
+            </form>
+            {message && <p style={{ color: "#047857" }}>{message}</p>}
+            {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
+          </div>
+        );
+      }
+
+      function App() {
+        const [users, setUsers] = useState([]);
+        const [currentUserId, setCurrentUserId] = useState(null);
+        const [tickets, setTickets] = useState([]);
+        const [selectedTicket, setSelectedTicket] = useState(null);
+        const [departments, setDepartments] = useState([]);
+        const [assets, setAssets] = useState([]);
+        const [userAssets, setUserAssets] = useState([]);
+        const [filters, setFilters] = useState({ status: "", priority: "", department: "" });
+        const [error, setError] = useState(null);
+
+        const currentUser = useMemo(() => users.find((u) => String(u.id) === String(currentUserId)) ?? null, [users, currentUserId]);
+
+        const loadUsers = async () => {
+          const data = await apiRequest("/users");
+          setUsers(data);
+        };
+
+        const loadDepartments = async () => {
+          const data = await apiRequest("/departments");
+          setDepartments(data);
+        };
+
+        const loadAssets = async () => {
+          const data = await apiRequest("/assets");
+          setAssets(data);
+        };
+
+        const loadTickets = async (userId) => {
+          const data = await apiRequest("/tickets", { userId });
+          setTickets(data);
+        };
+
+        const loadUserAssets = async (userId) => {
+          const data = await apiRequest(`/assets?user_id=${userId}`);
+          setUserAssets(data);
+        };
+
+        useEffect(() => {
+          loadUsers().catch((err) => setError(err.message));
+          loadDepartments().catch(() => {});
+          loadAssets().catch(() => {});
+        }, []);
+
+        useEffect(() => {
+          if (!currentUserId) {
+            setTickets([]);
+            setSelectedTicket(null);
+            setUserAssets([]);
+            return;
+          }
+          loadTickets(currentUserId).catch((err) => setError(err.message));
+          loadUserAssets(currentUserId).catch(() => setUserAssets([]));
+        }, [currentUserId]);
+
+        const filteredTickets = useMemo(() => {
+          return tickets.filter((ticket) => {
+            if (filters.status && ticket.status !== filters.status) return false;
+            if (filters.priority && ticket.priority !== filters.priority) return false;
+            if (filters.department && ticket.department_name !== filters.department) return false;
+            return true;
+          });
+        }, [tickets, filters]);
+
+        const handleTicketCreated = async (payload) => {
+          if (!currentUserId) return;
+          await apiRequest("/tickets", { method: "POST", body: payload, userId: currentUserId });
+          await loadTickets(currentUserId);
+          await loadUserAssets(currentUserId);
+        };
+
+        const handleTicketUpdate = async (ticketId, updates) => {
+          if (!currentUserId) return;
+          await apiRequest(`/tickets/${ticketId}`, { method: "PATCH", body: updates, userId: currentUserId });
+          await loadTickets(currentUserId);
+          const fresh = await apiRequest(`/tickets/${ticketId}`, { userId: currentUserId });
+          setSelectedTicket(fresh);
+        };
+
+        const handleDepartmentCreate = async (payload) => {
+          if (!currentUserId) return;
+          await apiRequest("/departments", { method: "POST", body: payload, userId: currentUserId });
+          await loadDepartments();
+        };
+
+        const handleAssetCreate = async (payload) => {
+          if (!currentUserId) return;
+          await apiRequest("/assets", { method: "POST", body: payload, userId: currentUserId });
+          await loadAssets();
+        };
+
+        const handleRoleUpdate = async (userId, role) => {
+          if (!currentUserId) return;
+          await apiRequest(`/users/${userId}/role`, { method: "PATCH", body: { role }, userId: currentUserId });
+          await loadUsers();
+        };
+
+        const handleAssetLink = async ({ userId, assetId, isPrimary }) => {
+          if (!currentUserId) return;
+          await apiRequest(`/users/${userId}/assets/${assetId}`, {
+            method: "POST",
+            body: { is_primary: !!isPrimary },
+            userId: currentUserId,
+          });
+          await loadUsers();
+          if (String(userId) === String(currentUserId)) {
+            await loadUserAssets(currentUserId);
+          }
+        };
+
+        const handleRegistration = async (payload) => {
+          await apiRequest("/users", { method: "POST", body: payload });
+          await loadUsers();
+        };
+
+        return (
+          <>
+            {error && (
+              <div className="card" style={{ border: "1px solid #fecaca", background: "#fee2e2" }}>
+                <strong style={{ color: "#b91c1c" }}>Backend error:</strong>
+                <p>{error}</p>
+              </div>
+            )}
+            <UserSwitcher users={users} currentUserId={currentUserId} onChange={setCurrentUserId} />
+            <RegistrationPanel departments={departments} onRegister={handleRegistration} />
+            {currentUser && (
+              <p className="muted">Current role: {currentUser.role}. Department: {currentUser.department_name ?? "—"}</p>
+            )}
+            <TicketCreator currentUser={currentUser} userAssets={userAssets} onCreate={handleTicketCreated} />
+            <div className="layout-two">
+              <div>
+                <TicketFilters filters={filters} onChange={setFilters} departments={departments} />
+                <TicketsTable
+                  tickets={filteredTickets}
+                  selectedTicketId={selectedTicket?.id ?? null}
+                  onSelect={(ticket) => setSelectedTicket(ticket)}
+                />
+              </div>
+              <TicketDetails ticket={selectedTicket} currentUser={currentUser} onUpdateStatus={handleTicketUpdate} />
+            </div>
+            <AdminPanel
+              currentUser={currentUser}
+              users={users}
+              departments={departments}
+              onCreateDepartment={handleDepartmentCreate}
+              onCreateAsset={handleAssetCreate}
+              onUpdateRole={handleRoleUpdate}
+              assets={assets}
+              onLinkAsset={handleAssetLink}
+            />
+          </>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
 </html>
