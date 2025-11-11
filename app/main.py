@@ -34,7 +34,7 @@ def _load_ml():
     try:
         ml_model.load()
     except Exception as e:
-        print("[ML] ❌ Не вдалося завантажити модель:", e)
+        print("[ML] ERROR: Не вдалося завантажити модель:", e)
 
 
 # === API ===

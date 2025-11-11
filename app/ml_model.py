@@ -23,11 +23,11 @@ class MLClassifier:
 
     def load(self):
         if not self.model_path.exists():
-            print(f"[ML] ⚠️ Файл моделі не знайдено: {self.model_path}")
+            print(f"[ML] WARNING: Файл моделі не знайдено: {self.model_path}")
             self.model = None
             return
         self.model = joblib.load(self.model_path)
-        print(f"[ML] ✅ Модель пріоритету завантажено: {self.model_path}")
+        print(f"[ML] SUCCESS: Модель пріоритету завантажено: {self.model_path}")
 
     def _to_english(self, text: str) -> str:
         """
@@ -41,7 +41,7 @@ class MLClassifier:
             print(f"[ML] src->en: {text[:60]!r} -> {translated[:60]!r}")
             return translated
         except Exception as e:
-            print(f"[ML] ⚠️ Не вдалося перекласти текст: {e}")
+            print(f"[ML] WARNING: Не вдалося перекласти текст: {e}")
             return text  # fallback: без перекладу
 
     def predict_priority(self, text: str) -> Tuple[str, float]:
