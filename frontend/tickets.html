@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tickets - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link" style="color: var(--primary);">Tickets</a></li>
+            <li><a href="#" class="nav-link" id="user-name">...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>Тікети</h1>
+            <a href="create-ticket.html" class="btn btn-primary">
+                ➕ Створити тікет
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="alert" style="background: rgba(59, 130, 246, 0.1); border-color: var(--primary);">
+                📌 <strong>В розробці:</strong> Tickets API ще не готове. Це placeholder сторінка.
+                Коли backend буде готовий, тут з'явиться список тікетів з фільтрами.
+            </div>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Що буде тут:</h3>
+            <ul style="color: var(--gray-light); line-height: 2;">
+                <li>📋 Таблиця з усіма тікетами</li>
+                <li>🔍 Пошук та фільтри (статус, пріоритет, департамент)</li>
+                <li>🏷️ ML badges (confidence scores)</li>
+                <li>👤 Assignee інформація</li>
+                <li>📊 Сортування за полями</li>
+            </ul>
+
+            <div style="margin-top: 2rem;">
+                <h4 style="margin-bottom: 1rem;">Тестові дані (приклад):</h4>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Заголовок</th>
+                            <th>Статус</th>
+                            <th>Пріоритет</th>
+                            <th>ML Conf</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>INC-0001</td>
+                            <td>Не працює VPN</td>
+                            <td><span class="badge badge-status">TRIAGE</span></td>
+                            <td><span class="badge badge-p1">P1</span></td>
+                            <td>85%</td>
+                        </tr>
+                        <tr>
+                            <td>INC-0002</td>
+                            <td>Повільний інтернет</td>
+                            <td><span class="badge badge-status">IN_PROGRESS</span></td>
+                            <td><span class="badge badge-p2">P2</span></td>
+                            <td>72%</td>
+                        </tr>
+                        <tr>
+                            <td>INC-0003</td>
+                            <td>Запит доступу</td>
+                            <td><span class="badge badge-status">NEW</span></td>
+                            <td><span class="badge badge-p3">P3</span></td>
+                            <td>91%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script>
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        document.getElementById('user-name').textContent = user.email || 'User';
+
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            api.logout();
+            window.location.href = 'login.html';
+        });
+    </script>
+</body>
+</html>

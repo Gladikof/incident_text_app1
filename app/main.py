@@ -1,29 +1,51 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .schemas import IncidentIn, LLMIncidentOut
-from .llm_router import route_with_llm
-from .ml_model import ml_model
+from app.config import settings
+from app.database import engine, Base
+from app.routers import auth
+
+# Legacy imports (для старого /classify_llm endpoint)
+from app.legacy_schemas import IncidentIn, LLMIncidentOut
+from app.llm_router import route_with_llm
+from app.ml_model import ml_model
+
+# === Створення таблиць БД ===
+# Base.metadata.create_all(bind=engine)  # Не потрібно, бо є Alembic
 
 # === Шляхи ===
-# __file__ -> ...\incident_text_app\app\main.py
-# BASE_DIR  -> ...\incident_text_app
-BASE_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_DIR = settings.FRONTEND_DIR
 
 print(f"[DEBUG] FRONTEND_DIR = {FRONTEND_DIR}  exists={FRONTEND_DIR.exists()}")
+print(f"[DEBUG] DATABASE_URL = {settings.DATABASE_URL}")
 
 app = FastAPI(
-    title="Service Desk LLM Router",
-    version="1.0.0",
+    title="Service Desk ML System",
+    version="2.0.0",
     description=(
-        "Прототип сервіс-деск системи для автоматизованої класифікації та "
-        "пріоритизації інцидентів із застосуванням LLM."
+        "Service Desk система з ML-класифікацією, тріажем та рольовою моделлю. "
+        "Дипломна робота: Методика автоматизованої класифікації та пріоритизації інцідентів."
     ),
 )
+
+# === CORS ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# === Routers ===
+from app.routers import tickets
+
+app.include_router(auth.router)
+app.include_router(tickets.router)
 
 
 @app.on_event("startup")
@@ -92,14 +114,14 @@ app.mount(
 @app.get("/")
 def root_redirect():
     """
-    Редірект з кореня на інтерфейс.
+    Редірект з кореня на login.
     """
-    return RedirectResponse(url="/ui_llm")
+    return RedirectResponse(url="/ui_llm_static/login.html")
 
 
 @app.get("/ui_llm")
 def ui_llm():
     """
-    Просто редірект на index.html у змонтованій статиці.
+    Legacy: редірект на старий UI.
     """
     return RedirectResponse(url="/ui_llm_static/index.html")

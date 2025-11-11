@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container-sm" style="margin-top: 5rem;">
+        <div class="card">
+            <h1 class="text-center mb-2">Service Desk</h1>
+            <p class="text-center" style="color: var(--gray); margin-bottom: 2rem;">
+                Увійдіть до системи
+            </p>
+
+            <div id="error-alert" class="alert alert-error hidden"></div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label class="form-label" for="email">Email</label>
+                    <input
+                        type="email"
+                        id="email"
+                        class="form-input"
+                        placeholder="admin@example.com"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="password">Пароль</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
+                        placeholder="••••••••"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="login-btn">
+                    Увійти
+                </button>
+            </form>
+
+            <div class="mt-2" style="padding: 1rem; background: var(--dark-lighter); border-radius: 8px; font-size: 0.875rem;">
+                <p style="color: var(--gray-light); margin-bottom: 0.5rem;">Тестові акаунти:</p>
+                <ul style="color: var(--gray); list-style: none;">
+                    <li>👤 <strong>admin@example.com</strong> / admin123 (ADMIN)</li>
+                    <li>👤 <strong>lead@example.com</strong> / lead123 (LEAD)</li>
+                    <li>👤 <strong>agent1@example.com</strong> / agent123 (AGENT)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        const form = document.getElementById('login-form');
+        const errorAlert = document.getElementById('error-alert');
+        const loginBtn = document.getElementById('login-btn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            // Hide error
+            errorAlert.classList.add('hidden');
+            loginBtn.textContent = 'Завантаження...';
+            loginBtn.disabled = true;
+
+            try {
+                const data = await api.login(email, password);
+                console.log('Login success:', data);
+
+                // Get user info
+                const user = await api.getMe();
+                localStorage.setItem('user', JSON.stringify(user));
+
+                // Redirect
+                window.location.href = 'dashboard.html';
+            } catch (error) {
+                errorAlert.textContent = error.message || 'Невірний email або пароль';
+                errorAlert.classList.remove('hidden');
+                loginBtn.textContent = 'Увійти';
+                loginBtn.disabled = false;
+            }
+        });
+
+        // Redirect if already logged in
+        if (api.isAuthenticated()) {
+            window.location.href = 'dashboard.html';
+        }
+    </script>
+</body>
+</html>

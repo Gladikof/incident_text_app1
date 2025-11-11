@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 2rem;">Dashboard</h1>
+
+        <!-- Stats Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="card">
+                <h3 style="color: var(--gray); font-size: 0.875rem; margin-bottom: 0.5rem;">Всього тікетів</h3>
+                <p style="font-size: 2rem; font-weight: 700;">0</p>
+            </div>
+            <div class="card">
+                <h3 style="color: var(--gray); font-size: 0.875rem; margin-bottom: 0.5rem;">В тріажі</h3>
+                <p style="font-size: 2rem; font-weight: 700; color: var(--warning);">0</p>
+            </div>
+            <div class="card">
+                <h3 style="color: var(--gray); font-size: 0.875rem; margin-bottom: 0.5rem;">В роботі</h3>
+                <p style="font-size: 2rem; font-weight: 700; color: var(--primary);">0</p>
+            </div>
+            <div class="card">
+                <h3 style="color: var(--gray); font-size: 0.875rem; margin-bottom: 0.5rem;">Закрито</h3>
+                <p style="font-size: 2rem; font-weight: 700; color: var(--secondary);">0</p>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <h2 style="margin-bottom: 1rem;">Швидкі дії</h2>
+            <div style="display: flex; gap: 1rem;">
+                <a href="tickets.html" class="btn btn-primary">
+                    📋 Переглянути тікети
+                </a>
+                <a href="create-ticket.html" class="btn btn-secondary">
+                    ➕ Створити тікет
+                </a>
+                <a href="http://127.0.0.1:8001/docs" target="_blank" class="btn" style="background: var(--dark-lighter); color: var(--text);">
+                    📚 API Docs
+                </a>
+            </div>
+        </div>
+
+        <!-- User Info -->
+        <div class="card mt-2">
+            <h2 style="margin-bottom: 1rem;">Ваш профіль</h2>
+            <div id="user-info">
+                <div class="loading"></div> Завантаження...
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script>
+        async function loadUserInfo() {
+            try {
+                const user = await api.getMe();
+                localStorage.setItem('user', JSON.stringify(user));
+
+                document.getElementById('user-name').textContent = user.email;
+                document.getElementById('user-info').innerHTML = `
+                    <div style="display: grid; gap: 0.5rem;">
+                        <p><strong>Email:</strong> ${user.email}</p>
+                        <p><strong>Роль:</strong> <span class="badge badge-status">${user.role}</span></p>
+                        <p><strong>Ім'я:</strong> ${user.full_name || 'Не вказано'}</p>
+                        <p><strong>Департамент ID:</strong> ${user.department_id || 'Не призначено'}</p>
+                        <p><strong>Активний:</strong> ${user.is_active ? '✅ Так' : '❌ Ні'}</p>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load user:', error);
+                document.getElementById('user-info').innerHTML = `
+                    <div class="alert alert-error">Помилка завантаження профілю</div>
+                `;
+            }
+        }
+
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            api.logout();
+            window.location.href = 'login.html';
+        });
+
+        loadUserInfo();
+    </script>
+</body>
+</html>
