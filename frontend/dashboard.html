@@ -15,6 +15,8 @@
             <li><a href="tickets.html" class="nav-link">Tickets</a></li>
             <li><a href="board.html" class="nav-link">Board</a></li>
             <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
+            <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
             <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
             <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
         </ul>
@@ -83,6 +85,13 @@
                 localStorage.setItem('user', JSON.stringify(user));
 
                 document.getElementById('user-name').textContent = user.email;
+
+                // Show admin links if user is ADMIN
+                if (user.role === 'ADMIN') {
+                    document.getElementById('admin-nav-users').style.display = 'block';
+                    document.getElementById('admin-nav-departments').style.display = 'block';
+                }
+
                 document.getElementById('user-info').innerHTML = `
                     <div style="display: grid; gap: 0.5rem;">
                         <p><strong>Email:</strong> ${user.email}</p>

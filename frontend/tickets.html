@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Tickets - Service Desk</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,6 +18,8 @@
             <li><a href="tickets.html" class="nav-link" style="color: var(--primary);">Tickets</a></li>
             <li><a href="board.html" class="nav-link">Board</a></li>
             <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
+            <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
             <li><a href="#" class="nav-link" id="user-name">...</a></li>
             <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
         </ul>
@@ -106,9 +111,16 @@
     <script src="js/api.js"></script>
     <script src="js/auth-guard.js"></script>
     <script>
+        const API_BASE_URL = 'http://127.0.0.1:8003';
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const currentUser = user; // Alias for consistency
         document.getElementById('user-name').textContent = user.email || 'User';
+
+        // Show admin links if user is ADMIN
+        if (user.role === 'ADMIN') {
+            document.getElementById('admin-nav-users').style.display = 'block';
+            document.getElementById('admin-nav-departments').style.display = 'block';
+        }
 
         document.getElementById('logout-btn').addEventListener('click', (e) => {
             e.preventDefault();

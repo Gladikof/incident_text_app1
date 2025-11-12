@@ -37,7 +37,7 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    department = relationship("Department", back_populates="users")
+    department = relationship("Department", foreign_keys=[department_id], back_populates="users")
     created_tickets = relationship("Ticket", foreign_keys="Ticket.created_by_user_id", back_populates="created_by")
     assigned_tickets = relationship("Ticket", foreign_keys="Ticket.assigned_to_user_id", back_populates="assigned_to")
     owned_assets = relationship("Asset", back_populates="owner")

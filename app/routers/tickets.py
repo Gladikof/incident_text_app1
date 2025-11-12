@@ -379,11 +379,23 @@ def confirm_assignment(
     ticket.assignment_confirmed_at = datetime.utcnow()
     ticket.assignment_feedback = feedback
 
-    # Якщо відхилено - знімаємо призначення
+    # Якщо відхилено - знімаємо призначення та призначаємо на LEAD
     if not confirmed:
-        ticket.assigned_to_user_id = None
         ticket.status = StatusEnum.TRIAGE  # Відправляємо в тріаж для ручного призначення
         print(f"[ASSIGNMENT REJECTED] Тікет #{ticket.incident_id} відхилено {current_user.full_name}. Причина: {feedback}")
+
+        # Призначити на LEAD департаменту
+        if ticket.department_id:
+            from app.models.department import Department
+            dept = db.query(Department).filter(Department.id == ticket.department_id).first()
+            if dept and dept.lead_user_id:
+                ticket.assigned_to_user_id = dept.lead_user_id
+                ticket.auto_assigned = False
+                print(f"[TRIAGE REASSIGN] Тікет #{ticket.incident_id} перепризначено на LEAD департаменту (user_id: {dept.lead_user_id})")
+            else:
+                ticket.assigned_to_user_id = None
+        else:
+            ticket.assigned_to_user_id = None
     else:
         print(f"[ASSIGNMENT CONFIRMED] Тікет #{ticket.incident_id} підтверджено {current_user.full_name}")
 

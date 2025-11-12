@@ -271,12 +271,34 @@
             return badges[role] || 'secondary';
         }
 
-        function openEditModal(user) {
+        async function openEditModal(user) {
+            // Load departments for dropdown
+            try {
+                const response = await fetch(`${API_BASE_URL}/departments`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const departments = await response.json();
+                    const deptSelect = document.getElementById('edit-department');
+                    deptSelect.innerHTML = '<option value="">-- Без департаменту --</option>';
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept.id;
+                        option.textContent = dept.name;
+                        deptSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load departments:', error);
+            }
+
             document.getElementById('edit-user-id').value = user.id;
             document.getElementById('edit-email').value = user.email;
             document.getElementById('edit-fullname').value = user.full_name || '';
             document.getElementById('edit-role').value = user.role;
             document.getElementById('edit-active').value = user.is_active.toString();
+            document.getElementById('edit-department').value = user.department_id || '';
             document.getElementById('edit-specialty').value = user.specialty || '';
             document.getElementById('edit-password').value = '';
 
@@ -291,11 +313,13 @@
             e.preventDefault();
 
             const userId = document.getElementById('edit-user-id').value;
+            const deptValue = document.getElementById('edit-department').value;
             const data = {
                 email: document.getElementById('edit-email').value,
                 full_name: document.getElementById('edit-fullname').value || null,
                 role: document.getElementById('edit-role').value,
                 is_active: document.getElementById('edit-active').value === 'true',
+                department_id: deptValue ? parseInt(deptValue) : null,
                 specialty: document.getElementById('edit-specialty').value || null,
             };
 

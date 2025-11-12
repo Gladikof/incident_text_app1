@@ -125,6 +125,15 @@ class TicketService:
             if ticket.triage_required:
                 ticket.status = StatusEnum.TRIAGE
                 ticket.self_assign_locked = True  # Блокуємо self-assign до тріажу
+
+                # Автоматично призначити на LEAD департаменту
+                if ticket.department_id:
+                    from app.models.department import Department
+                    dept = db.query(Department).filter(Department.id == ticket.department_id).first()
+                    if dept and dept.lead_user_id:
+                        ticket.assigned_to_user_id = dept.lead_user_id
+                        ticket.auto_assigned = False  # Це системне призначення, не ML
+                        print(f"[TRIAGE AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено на LEAD департаменту (user_id: {dept.lead_user_id})")
             else:
                 ticket.status = StatusEnum.NEW
 
@@ -134,6 +143,15 @@ class TicketService:
             ticket.triage_reason = TriageReasonEnum.ML_DISABLED
             ticket.status = StatusEnum.TRIAGE
             ticket.self_assign_locked = True
+
+            # Автоматично призначити на LEAD департаменту
+            if ticket.department_id:
+                from app.models.department import Department
+                dept = db.query(Department).filter(Department.id == ticket.department_id).first()
+                if dept and dept.lead_user_id:
+                    ticket.assigned_to_user_id = dept.lead_user_id
+                    ticket.auto_assigned = False
+                    print(f"[TRIAGE AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено на LEAD департаменту (user_id: {dept.lead_user_id})")
 
         db.commit()
         db.refresh(ticket)

@@ -36,14 +36,15 @@
                 <tr style="background: var(--dark-lighter);">
                     <th style="padding: 1rem; text-align: left;">ID</th>
                     <th style="padding: 1rem; text-align: left;">Назва</th>
+                    <th style="padding: 1rem; text-align: left;">Начальник (LEAD)</th>
                     <th style="padding: 1rem; text-align: left;">Опис</th>
-                    <th style="padding: 1rem; text-align: left;">Кількість співробітників</th>
+                    <th style="padding: 1rem; text-align: left;">Співробітників</th>
                     <th style="padding: 1rem; text-align: left;">Дії</th>
                 </tr>
             </thead>
             <tbody id="departments-table-body">
                 <tr>
-                    <td colspan="5" style="padding: 2rem; text-align: center;">Завантаження...</td>
+                    <td colspan="6" style="padding: 2rem; text-align: center;">Завантаження...</td>
                 </tr>
             </tbody>
         </table>
@@ -61,6 +62,13 @@
                 <div>
                     <label style="display: block; margin-bottom: 0.5rem;">Назва департаменту:</label>
                     <input type="text" id="create-name" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Начальник (LEAD):</label>
+                    <select id="create-lead" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="">-- Без начальника --</option>
+                    </select>
                 </div>
 
                 <div>
@@ -90,6 +98,13 @@
                 <div>
                     <label style="display: block; margin-bottom: 0.5rem;">Назва департаменту:</label>
                     <input type="text" id="edit-name" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Начальник (LEAD):</label>
+                    <select id="edit-lead" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="">-- Без начальника --</option>
+                    </select>
                 </div>
 
                 <div>
@@ -148,32 +163,40 @@
                 const departments = await deptsResponse.json();
                 const users = await usersResponse.json();
 
-                // Count users per department
+                // Count users per department and create user map
                 const userCounts = {};
+                const userMap = {};
                 users.forEach(user => {
+                    userMap[user.id] = user;
                     if (user.department_id) {
                         userCounts[user.department_id] = (userCounts[user.department_id] || 0) + 1;
                     }
                 });
 
-                renderDepartmentsTable(departments, userCounts);
+                renderDepartmentsTable(departments, userCounts, userMap, users);
             } catch (error) {
                 alert('Помилка: ' + error.message);
             }
         }
 
-        function renderDepartmentsTable(departments, userCounts) {
+        function renderDepartmentsTable(departments, userCounts, userMap, allUsers) {
             const tbody = document.getElementById('departments-table-body');
+            window.allUsersGlobal = allUsers; // Зберегти для модалок
 
             if (departments.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="padding: 2rem; text-align: center;">Немає департаментів</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="padding: 2rem; text-align: center;">Немає департаментів</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = departments.map(dept => `
+            tbody.innerHTML = departments.map(dept => {
+                const leadUser = dept.lead_user_id ? userMap[dept.lead_user_id] : null;
+                const leadName = leadUser ? (leadUser.full_name || leadUser.email) : '-';
+
+                return `
                 <tr style="border-top: 1px solid var(--border);">
                     <td style="padding: 1rem;">${dept.id}</td>
                     <td style="padding: 1rem;"><strong>${dept.name}</strong></td>
+                    <td style="padding: 1rem;">${leadName}</td>
                     <td style="padding: 1rem; max-width: 300px;">${dept.description || '-'}</td>
                     <td style="padding: 1rem;">${userCounts[dept.id] || 0}</td>
                     <td style="padding: 1rem;">
@@ -182,11 +205,24 @@
                         </button>
                     </td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
         }
 
         // Create modal
         function openCreateModal() {
+            // Завантажити LEAD users
+            const leadSelect = document.getElementById('create-lead');
+            leadSelect.innerHTML = '<option value="">-- Без начальника --</option>';
+
+            const leadUsers = window.allUsersGlobal.filter(u => u.role === 'LEAD' || u.role === 'ADMIN');
+            leadUsers.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.full_name || user.email;
+                leadSelect.appendChild(option);
+            });
+
             document.getElementById('create-name').value = '';
             document.getElementById('create-description').value = '';
             document.getElementById('create-modal').style.display = 'flex';
@@ -199,9 +235,11 @@
         document.getElementById('create-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            const leadValue = document.getElementById('create-lead').value;
             const data = {
                 name: document.getElementById('create-name').value,
                 description: document.getElementById('create-description').value || null,
+                lead_user_id: leadValue ? parseInt(leadValue) : null,
             };
 
             try {
@@ -229,9 +267,22 @@
 
         // Edit modal
         function openEditModal(dept) {
+            // Завантажити LEAD users
+            const leadSelect = document.getElementById('edit-lead');
+            leadSelect.innerHTML = '<option value="">-- Без начальника --</option>';
+
+            const leadUsers = window.allUsersGlobal.filter(u => u.role === 'LEAD' || u.role === 'ADMIN');
+            leadUsers.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.full_name || user.email;
+                leadSelect.appendChild(option);
+            });
+
             document.getElementById('edit-dept-id').value = dept.id;
             document.getElementById('edit-name').value = dept.name;
             document.getElementById('edit-description').value = dept.description || '';
+            document.getElementById('edit-lead').value = dept.lead_user_id || '';
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
@@ -243,9 +294,11 @@
             e.preventDefault();
 
             const deptId = document.getElementById('edit-dept-id').value;
+            const leadValue = document.getElementById('edit-lead').value;
             const data = {
                 name: document.getElementById('edit-name').value,
                 description: document.getElementById('edit-description').value || null,
+                lead_user_id: leadValue ? parseInt(leadValue) : null,
             };
 
             try {

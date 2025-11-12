@@ -38,6 +38,7 @@ class TicketUpdate(BaseModel):
     """Оновлення тікету"""
     title: Optional[str] = Field(None, min_length=3, max_length=255)
     description: Optional[str] = Field(None, min_length=10)
+    status: Optional[StatusEnum] = None
     category: Optional[CategoryEnum] = None
     priority_manual: Optional[PriorityEnum] = None
     labels: Optional[str] = None
