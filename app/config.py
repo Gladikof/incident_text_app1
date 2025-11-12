@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 години
 
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    BACKEND_CORS_ORIGINS: list = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ]
 
     # Paths
     BASE_DIR: Path = Path(__file__).resolve().parent.parent

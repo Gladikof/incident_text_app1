@@ -3,8 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tickets - Service Desk</title>
+    <title>Board - Service Desk</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .board-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .board-column {
+            background: var(--dark);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            min-height: 500px;
+        }
+
+        .column-header {
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ticket-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .ticket-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .ticket-card-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .ticket-card-id {
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .ticket-card-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-top: 0.5rem;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -12,8 +84,8 @@
         <a href="dashboard.html" class="navbar-brand">Service Desk</a>
         <ul class="navbar-nav">
             <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
-            <li><a href="tickets.html" class="nav-link" style="color: var(--primary);">Tickets</a></li>
-            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link" style="color: var(--primary);">Board</a></li>
             <li><a href="analytics.html" class="nav-link">Analytics</a></li>
             <li><a href="#" class="nav-link" id="user-name">...</a></li>
             <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
@@ -21,82 +93,85 @@
     </nav>
 
     <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-            <h1>Тікети</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h1>Kanban Board</h1>
             <a href="create-ticket.html" class="btn btn-primary">
                 ➕ Створити тікет
             </a>
         </div>
 
         <!-- Filters -->
-        <div class="card" style="margin-bottom: 1.5rem;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                <div>
-                    <label class="form-label">Статус</label>
-                    <select id="filter-status" class="form-input">
-                        <option value="">Всі</option>
-                        <option value="NEW">NEW</option>
-                        <option value="TRIAGE">TRIAGE</option>
-                        <option value="IN_PROGRESS">IN_PROGRESS</option>
-                        <option value="RESOLVED">RESOLVED</option>
-                        <option value="CLOSED">CLOSED</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label">Пріоритет</label>
-                    <select id="filter-priority" class="form-input">
-                        <option value="">Всі</option>
-                        <option value="P1">P1 - Критичний</option>
-                        <option value="P2">P2 - Високий</option>
-                        <option value="P3">P3 - Стандартний</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label">Тільки тріаж</label>
-                    <input type="checkbox" id="filter-triage" style="width: auto; margin-top: 0.5rem;">
-                </div>
+        <div class="card filter-bar">
+            <div>
+                <label class="form-label">Пріоритет</label>
+                <select id="filter-priority" class="form-input" style="width: 150px;">
+                    <option value="">Всі</option>
+                    <option value="P1">P1</option>
+                    <option value="P2">P2</option>
+                    <option value="P3">P3</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Тільки тріаж</label>
+                <input type="checkbox" id="filter-triage" style="width: auto; margin-top: 0.5rem;">
             </div>
         </div>
 
-        <!-- Tickets Table -->
-        <div class="card">
-            <div id="loading" style="text-align: center; padding: 2rem; color: var(--gray-light);">
-                Завантаження тікетів...
+        <!-- Board -->
+        <div id="board-loading" style="text-align: center; padding: 3rem; color: var(--gray-light);">
+            Завантаження...
+        </div>
+
+        <div id="board-container" class="board-container" style="display: none;">
+            <div class="board-column">
+                <div class="column-header">
+                    <span style="color: #93c5fd;">🆕 NEW</span>
+                    <span id="count-NEW" class="badge" style="background: #1e3a8a;">0</span>
+                </div>
+                <div id="column-NEW" class="column-cards"></div>
             </div>
 
-            <div id="tickets-container" style="display: none;">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Заголовок</th>
-                            <th>Статус</th>
-                            <th>Пріоритет</th>
-                            <th>Категорія (ML)</th>
-                            <th>Тріаж</th>
-                            <th>Створено</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tickets-tbody">
-                    </tbody>
-                </table>
+            <div class="board-column">
+                <div class="column-header">
+                    <span style="color: #fde047;">⚠️ TRIAGE</span>
+                    <span id="count-TRIAGE" class="badge" style="background: #78350f;">0</span>
+                </div>
+                <div id="column-TRIAGE" class="column-cards"></div>
             </div>
 
-            <div id="empty-state" style="display: none; text-align: center; padding: 3rem; color: var(--gray-light);">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">📋</div>
-                <div>Тікетів не знайдено</div>
+            <div class="board-column">
+                <div class="column-header">
+                    <span style="color: #86efac;">🔧 IN PROGRESS</span>
+                    <span id="count-IN_PROGRESS" class="badge" style="background: #065f46;">0</span>
+                </div>
+                <div id="column-IN_PROGRESS" class="column-cards"></div>
+            </div>
+
+            <div class="board-column">
+                <div class="column-header">
+                    <span style="color: #93c5fd;">✅ RESOLVED</span>
+                    <span id="count-RESOLVED" class="badge" style="background: #1e40af;">0</span>
+                </div>
+                <div id="column-RESOLVED" class="column-cards"></div>
+            </div>
+
+            <div class="board-column">
+                <div class="column-header">
+                    <span style="color: #9ca3af;">🔒 CLOSED</span>
+                    <span id="count-CLOSED" class="badge" style="background: #374151;">0</span>
+                </div>
+                <div id="column-CLOSED" class="column-cards"></div>
             </div>
         </div>
     </div>
 
-    <!-- Ticket Details Modal -->
+    <!-- Ticket Details Modal (same as tickets.html) -->
     <div id="ticket-modal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 800px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <h2 id="modal-title" style="margin: 0;">Завантаження...</h2>
-                <button id="close-modal" class="btn" style="background: transparent; padding: 0.5rem;">&times;</button>
+                <button id="close-modal" class="btn" style="background: transparent; padding: 0.5rem; font-size: 2rem;">&times;</button>
             </div>
-
             <div id="modal-body">
                 <!-- Content loaded dynamically -->
             </div>
@@ -115,7 +190,6 @@
             window.location.href = 'login.html';
         });
 
-        // Статус badges
         const statusBadges = {
             'NEW': '<span class="badge" style="background: #1e3a8a; color: #93c5fd;">NEW</span>',
             'TRIAGE': '<span class="badge" style="background: #78350f; color: #fde047;">TRIAGE</span>',
@@ -130,81 +204,90 @@
             'P3': '<span class="badge badge-p3">P3</span>',
         };
 
-        // Load tickets
-        async function loadTickets() {
+        // Load board
+        async function loadBoard() {
             try {
                 const filters = {};
-                const status = document.getElementById('filter-status').value;
                 const priority = document.getElementById('filter-priority').value;
                 const triageOnly = document.getElementById('filter-triage').checked;
 
-                if (status) filters.status = status;
                 if (priority) filters.priority = priority;
                 if (triageOnly) filters.triage_required = true;
 
                 const tickets = await api.getTickets(filters);
 
-                const tbody = document.getElementById('tickets-tbody');
-                tbody.innerHTML = '';
-
-                if (tickets.length === 0) {
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('tickets-container').style.display = 'none';
-                    document.getElementById('empty-state').style.display = 'block';
-                    return;
-                }
-
-                tickets.forEach(ticket => {
-                    const row = document.createElement('tr');
-                    row.style.cursor = 'pointer';
-                    row.onclick = () => openTicketModal(ticket.id);
-
-                    const mlCategory = ticket.category_ml_suggested
-                        ? `${ticket.category_ml_suggested} (${Math.round(ticket.category_ml_confidence * 100)}%)`
-                        : '-';
-
-                    const triageBadge = ticket.triage_required
-                        ? '<span class="badge" style="background: #dc2626; color: white;">Потрібен</span>'
-                        : '<span class="badge" style="background: #16a34a; color: white;">Ні</span>';
-
-                    const createdDate = new Date(ticket.created_at).toLocaleDateString('uk-UA', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-
-                    row.innerHTML = `
-                        <td><strong>${ticket.incident_id}</strong></td>
-                        <td>${ticket.title}</td>
-                        <td>${statusBadges[ticket.status] || ticket.status}</td>
-                        <td>${priorityBadges[ticket.priority_manual] || ticket.priority_manual}</td>
-                        <td>${mlCategory}</td>
-                        <td>${triageBadge}</td>
-                        <td style="color: var(--gray-light); font-size: 0.875rem;">${createdDate}</td>
-                    `;
-
-                    tbody.appendChild(row);
+                // Clear columns
+                const statuses = ['NEW', 'TRIAGE', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+                statuses.forEach(status => {
+                    document.getElementById(`column-${status}`).innerHTML = '';
+                    document.getElementById(`count-${status}`).textContent = '0';
                 });
 
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('tickets-container').style.display = 'block';
-                document.getElementById('empty-state').style.display = 'none';
+                // Group by status
+                const grouped = {};
+                statuses.forEach(s => grouped[s] = []);
+                tickets.forEach(ticket => {
+                    if (grouped[ticket.status]) {
+                        grouped[ticket.status].push(ticket);
+                    }
+                });
+
+                // Render cards
+                Object.keys(grouped).forEach(status => {
+                    const column = document.getElementById(`column-${status}`);
+                    const count = document.getElementById(`count-${status}`);
+                    const ticketsInColumn = grouped[status];
+
+                    count.textContent = ticketsInColumn.length;
+
+                    ticketsInColumn.forEach(ticket => {
+                        const card = document.createElement('div');
+                        card.className = 'ticket-card';
+                        card.onclick = () => openTicketModal(ticket.id);
+
+                        const mlBadge = ticket.category_ml_suggested
+                            ? `<span class="badge" style="background: #065f46; color: #86efac; font-size: 0.7rem;">
+                                 ${ticket.category_ml_suggested} ${Math.round(ticket.category_ml_confidence * 100)}%
+                               </span>`
+                            : '';
+
+                        const triageBadge = ticket.triage_required
+                            ? '<span class="badge" style="background: #dc2626; color: white; font-size: 0.7rem;">Тріаж</span>'
+                            : '';
+
+                        card.innerHTML = `
+                            <div class="ticket-card-id">${ticket.incident_id}</div>
+                            <div class="ticket-card-title">${ticket.title}</div>
+                            <div class="ticket-card-badges">
+                                ${priorityBadges[ticket.priority_manual] || ''}
+                                ${mlBadge}
+                                ${triageBadge}
+                            </div>
+                        `;
+
+                        column.appendChild(card);
+                    });
+
+                    if (ticketsInColumn.length === 0) {
+                        column.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--gray-light); font-size: 0.875rem;">Немає тікетів</div>';
+                    }
+                });
+
+                document.getElementById('board-loading').style.display = 'none';
+                document.getElementById('board-container').style.display = 'grid';
 
             } catch (error) {
-                console.error('Error loading tickets:', error);
-                document.getElementById('loading').innerHTML =
-                    '<div style="color: var(--danger);">Помилка завантаження: ' + error.message + '</div>';
+                console.error('Error loading board:', error);
+                document.getElementById('board-loading').innerHTML =
+                    '<div style="color: var(--danger);">Помилка: ' + error.message + '</div>';
             }
         }
 
         // Filters
-        document.getElementById('filter-status').addEventListener('change', loadTickets);
-        document.getElementById('filter-priority').addEventListener('change', loadTickets);
-        document.getElementById('filter-triage').addEventListener('change', loadTickets);
+        document.getElementById('filter-priority').addEventListener('change', loadBoard);
+        document.getElementById('filter-triage').addEventListener('change', loadBoard);
 
-        // Modal functionality
+        // Modal functionality (same as tickets.html)
         const modal = document.getElementById('ticket-modal');
         const closeModalBtn = document.getElementById('close-modal');
 
@@ -228,7 +311,7 @@
             } catch (error) {
                 console.error('Error loading ticket:', error);
                 document.getElementById('modal-body').innerHTML =
-                    '<div style="color: var(--danger); padding: 2rem;">Помилка завантаження: ' + error.message + '</div>';
+                    '<div style="color: var(--danger); padding: 2rem;">Помилка: ' + error.message + '</div>';
             }
         }
 
@@ -238,7 +321,6 @@
             const createdDate = new Date(ticket.created_at).toLocaleString('uk-UA');
             const updatedDate = new Date(ticket.updated_at).toLocaleString('uk-UA');
 
-            // ML badges
             const priorityML = ticket.priority_ml_suggested
                 ? `<div style="margin-bottom: 0.5rem;">
                      <span class="badge badge-${ticket.priority_ml_suggested.toLowerCase()}">${ticket.priority_ml_suggested}</span>
@@ -261,7 +343,6 @@
                 ? '<span class="badge" style="background: #dc2626; color: white;">Потрібен тріаж</span>'
                 : '<span class="badge" style="background: #16a34a; color: white;">Тріаж не потрібен</span>';
 
-            // Action buttons based on status and user role
             let actionButtons = '';
             if (ticket.status === 'NEW' || ticket.status === 'TRIAGE') {
                 actionButtons += `
@@ -271,7 +352,6 @@
                 `;
             }
 
-            // Status change dropdown
             const statusOptions = ['NEW', 'TRIAGE', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
             const statusDropdown = `
                 <select id="status-change" class="form-input" style="width: auto; display: inline-block; margin-right: 0.5rem;">
@@ -294,19 +374,16 @@
 
             const modalContent = `
                 <div style="display: grid; gap: 1.5rem;">
-                    <!-- Title -->
                     <div>
                         <h3 style="margin-bottom: 0.5rem; color: var(--gray-light); font-size: 0.875rem; font-weight: 500;">Заголовок</h3>
                         <div style="font-size: 1.125rem; font-weight: 600;">${ticket.title}</div>
                     </div>
 
-                    <!-- Description -->
                     <div>
                         <h3 style="margin-bottom: 0.5rem; color: var(--gray-light); font-size: 0.875rem; font-weight: 500;">Опис</h3>
                         <div style="white-space: pre-wrap;">${ticket.description}</div>
                     </div>
 
-                    <!-- Status & Priority -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div>
                             <h3 style="margin-bottom: 0.5rem; color: var(--gray-light); font-size: 0.875rem; font-weight: 500;">Статус</h3>
@@ -324,7 +401,6 @@
                         </div>
                     </div>
 
-                    <!-- ML Predictions -->
                     <div style="border-top: 1px solid var(--border); padding-top: 1.5rem;">
                         <h3 style="margin-bottom: 1rem; font-size: 1rem; font-weight: 600;">🤖 ML Predictions</h3>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -339,14 +415,12 @@
                         </div>
                     </div>
 
-                    <!-- Triage -->
                     <div>
                         <h3 style="margin-bottom: 0.5rem; color: var(--gray-light); font-size: 0.875rem; font-weight: 500;">Тріаж</h3>
                         ${triageBadge}
                         ${ticket.triage_note ? `<div style="margin-top: 0.5rem; color: var(--gray-light); font-size: 0.875rem;">${ticket.triage_note}</div>` : ''}
                     </div>
 
-                    <!-- Metadata -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; color: var(--gray-light);">
                         <div>
                             <strong>Створено:</strong> ${createdDate}
@@ -362,7 +436,6 @@
                         </div>
                     </div>
 
-                    <!-- Action Buttons -->
                     ${actionButtons ? `<div style="border-top: 1px solid var(--border); padding-top: 1.5rem;">${actionButtons}</div>` : ''}
                 </div>
             `;
@@ -375,7 +448,7 @@
                 await api.claimTicket(ticketId);
                 alert('Тікет успішно взято!');
                 closeModal();
-                loadTickets(); // Reload list
+                loadBoard();
             } catch (error) {
                 alert('Помилка: ' + error.message);
             }
@@ -386,8 +459,8 @@
             try {
                 await api.updateTicket(ticketId, { status: newStatus });
                 alert('Статус оновлено!');
-                await openTicketModal(ticketId); // Reload modal
-                loadTickets(); // Reload list
+                await openTicketModal(ticketId);
+                loadBoard();
             } catch (error) {
                 alert('Помилка: ' + error.message);
             }
@@ -398,15 +471,15 @@
             try {
                 await api.updateTicket(ticketId, { priority_manual: newPriority });
                 alert('Пріоритет оновлено!');
-                await openTicketModal(ticketId); // Reload modal
-                loadTickets(); // Reload list
+                await openTicketModal(ticketId);
+                loadBoard();
             } catch (error) {
                 alert('Помилка: ' + error.message);
             }
         }
 
         // Initial load
-        loadTickets();
+        loadBoard();
     </script>
 </body>
 </html>

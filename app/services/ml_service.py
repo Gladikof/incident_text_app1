@@ -112,7 +112,8 @@ class MLService:
                 priority_confidence=priority_conf,
                 category_predicted=category_ml,
                 category_confidence=category_conf,
-                raw_output=str(llm_result) if llm_result else None,
+                input_text=f"{title}\n{description}",
+                notes=str(llm_result) if llm_result else None,
             )
             db.add(log_entry)
             db.commit()
@@ -160,13 +161,14 @@ class MLService:
         # Припускаємо, що LLM повертає категорії як в CategoryEnum
         # Або робимо маппінг
         mapping = {
-            "hardware": CategoryEnum.Hardware,
-            "software": CategoryEnum.Software,
-            "network": CategoryEnum.Network,
-            "access": CategoryEnum.Access,
-            "other": CategoryEnum.Other,
+            "hardware": CategoryEnum.HARDWARE,
+            "software": CategoryEnum.SOFTWARE,
+            "network": CategoryEnum.NETWORK,
+            "access": CategoryEnum.ACCESS,
+            "other": CategoryEnum.OTHER,
+            "workstation": CategoryEnum.HARDWARE,  # LLM може повернути "Workstation"
         }
-        return mapping.get(llm_category.lower(), CategoryEnum.Other)
+        return mapping.get(llm_category.lower(), CategoryEnum.OTHER)
 
 
 ml_service = MLService()

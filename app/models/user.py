@@ -2,7 +2,7 @@
 User model
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -27,6 +27,10 @@ class User(Base):
 
     # Департамент
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+
+    # Спеціалізація (для агентів): ключові слова через кому
+    # Приклад: "VPN,Remote Access,Cisco AnyConnect" або "Local Network,Switches,VLAN"
+    specialty = Column(Text, nullable=True)
 
     # Метадані
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

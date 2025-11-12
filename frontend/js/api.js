@@ -2,7 +2,7 @@
  * API Client для Service Desk
  */
 
-const API_BASE = 'http://127.0.0.1:8001';
+const API_BASE = 'http://127.0.0.1:8003';
 
 class ApiClient {
     constructor() {
@@ -63,10 +63,16 @@ class ApiClient {
         localStorage.removeItem('user');
     }
 
-    // Tickets (placeholder - буде розширено пізніше)
+    // Tickets
     async getTickets(filters = {}) {
-        const params = new URLSearchParams(filters);
-        return this.request(`/tickets?${params}`);
+        const params = new URLSearchParams();
+        Object.keys(filters).forEach(key => {
+            if (filters[key] !== null && filters[key] !== undefined) {
+                params.append(key, filters[key]);
+            }
+        });
+        const queryString = params.toString();
+        return this.request(`/tickets${queryString ? '?' + queryString : ''}`);
     }
 
     async getTicket(id) {
@@ -78,6 +84,49 @@ class ApiClient {
             method: 'POST',
             body: JSON.stringify(data),
         });
+    }
+
+    async updateTicket(id, data) {
+        return this.request(`/tickets/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateTicketStatus(id, status) {
+        return this.request(`/tickets/${id}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status }),
+        });
+    }
+
+    async claimTicket(id) {
+        return this.request(`/tickets/${id}/claim`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    async assignTicket(id, assigneeId) {
+        return this.request(`/tickets/${id}/assign`, {
+            method: 'PATCH',
+            body: JSON.stringify({ assignee_id: assigneeId }),
+        });
+    }
+
+    async resolveTriage(id, priorityFinal, categoryFinal) {
+        return this.request(`/tickets/${id}/triage/resolve`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                priority_final: priorityFinal,
+                category_final: categoryFinal
+            }),
+        });
+    }
+
+    // Departments
+    async getDepartments() {
+        return this.request('/departments');
     }
 
     isAuthenticated() {

@@ -66,8 +66,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Inactive user"
         )
 
-    # Створити JWT
-    access_token = create_access_token(data={"sub": user.id})
+    # Створити JWT (sub має бути string)
+    access_token = create_access_token(data={"sub": str(user.id)})
 
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -91,7 +91,8 @@ def login_json(login_data: UserLogin, db: Session = Depends(get_db)):
             detail="Inactive user"
         )
 
-    access_token = create_access_token(data={"sub": user.id})
+    # Створити JWT (sub має бути string)
+    access_token = create_access_token(data={"sub": str(user.id)})
 
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -102,3 +103,4 @@ def get_me(current_user: User = Depends(get_current_active_user)):
     Отримати поточного користувача
     """
     return current_user
+

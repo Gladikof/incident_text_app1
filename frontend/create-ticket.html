@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Створити тікет - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li><a href="#" class="nav-link" id="user-name">...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container" style="max-width: 800px;">
+        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
+            <a href="tickets.html" class="btn" style="background: var(--dark);">← Назад</a>
+            <h1 style="margin: 0;">Створити новий тікет</h1>
+        </div>
+
+        <div class="card">
+            <form id="create-ticket-form">
+                <div class="form-group">
+                    <label for="title" class="form-label">
+                        Заголовок <span style="color: var(--danger);">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        id="title"
+                        class="form-input"
+                        placeholder="Коротко опишіть проблему"
+                        required
+                        minlength="3"
+                        maxlength="255"
+                    />
+                    <small style="color: var(--gray-light);">Мінімум 3 символи</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="description" class="form-label">
+                        Опис <span style="color: var(--danger);">*</span>
+                    </label>
+                    <textarea
+                        id="description"
+                        class="form-input"
+                        placeholder="Детально опишіть проблему, кроки відтворення, що вже спробували..."
+                        rows="6"
+                        required
+                        minlength="10"
+                    ></textarea>
+                    <small style="color: var(--gray-light);">Мінімум 10 символів. Чим детальніше, тим краще ML зможе класифікувати.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="priority" class="form-label">Початковий пріоритет</label>
+                    <select id="priority" class="form-input">
+                        <option value="P3">P3 - Стандартний (за замовчуванням)</option>
+                        <option value="P2">P2 - Високий</option>
+                        <option value="P1">P1 - Критичний</option>
+                    </select>
+                    <small style="color: var(--gray-light);">ML автоматично визначить пріоритет на основі опису</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="department" class="form-label">Департамент</label>
+                    <select id="department" class="form-input">
+                        <option value="">Завантаження...</option>
+                    </select>
+                </div>
+
+                <div class="alert" style="background: rgba(59, 130, 246, 0.1); border-color: var(--primary); margin-bottom: 1.5rem;">
+                    <strong>ML Класифікація:</strong> Після створення тікета система автоматично:
+                    <ul style="margin: 0.5rem 0 0 1.5rem; color: var(--gray-light);">
+                        <li>Визначить категорію (Hardware, Software, Network, Access)</li>
+                        <li>Оцінить пріоритет на основі опису</li>
+                        <li>Вирахує впевненість моделі (confidence)</li>
+                        <li>При низькій впевненості - відправить на тріаж LEAD'у</li>
+                    </ul>
+                </div>
+
+                <div id="error-message" class="alert" style="display: none; background: rgba(220, 38, 38, 0.1); border-color: var(--danger); color: var(--danger);"></div>
+
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary" id="submit-btn" style="flex: 1;">
+                        Створити тікет
+                    </button>
+                    <a href="tickets.html" class="btn" style="background: var(--dark);">
+                        Скасувати
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script>
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        document.getElementById('user-name').textContent = user.email || 'User';
+
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            api.logout();
+            window.location.href = 'login.html';
+        });
+
+        // Load departments
+        async function loadDepartments() {
+            try {
+                const response = await fetch('http://127.0.0.1:8003/departments', {
+                    headers: {
+                        'Authorization': `Bearer ${api.token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load departments');
+                }
+
+                const departments = await response.json();
+                const select = document.getElementById('department');
+
+                select.innerHTML = '<option value="">Не вказано</option>';
+                departments.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept.id;
+                    option.textContent = dept.name;
+                    select.appendChild(option);
+                });
+
+                // Select first department by default
+                if (departments.length > 0) {
+                    select.value = departments[0].id;
+                }
+            } catch (error) {
+                console.error('Error loading departments:', error);
+                document.getElementById('department').innerHTML = '<option value="">Помилка завантаження</option>';
+            }
+        }
+
+        // Form submission
+        document.getElementById('create-ticket-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submit-btn');
+            const errorDiv = document.getElementById('error-message');
+
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Створення...';
+                errorDiv.style.display = 'none';
+
+                const formData = {
+                    title: document.getElementById('title').value.trim(),
+                    description: document.getElementById('description').value.trim(),
+                    priority_manual: document.getElementById('priority').value,
+                    department_id: parseInt(document.getElementById('department').value) || null,
+                };
+
+                const ticket = await api.createTicket(formData);
+
+                // Success - redirect to ticket details or tickets list
+                alert(`Тікет ${ticket.incident_id} успішно створено!\n\nML Класифікація:\n- Категорія: ${ticket.category_ml_suggested || 'Не визначено'} (${ticket.category_ml_confidence ? Math.round(ticket.category_ml_confidence * 100) + '%' : 'N/A'})\n- Пріоритет: ${ticket.priority_ml_suggested || 'Не визначено'} (${ticket.priority_ml_confidence ? Math.round(ticket.priority_ml_confidence * 100) + '%' : 'N/A'})\n- Тріаж: ${ticket.triage_required ? 'Потрібен (' + ticket.triage_reason + ')' : 'Не потрібен'}`);
+
+                window.location.href = 'tickets.html';
+
+            } catch (error) {
+                console.error('Error creating ticket:', error);
+                errorDiv.textContent = `Помилка: ${error.message}`;
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Створити тікет';
+            }
+        });
+
+        // Initial load
+        loadDepartments();
+    </script>
+</body>
+</html>

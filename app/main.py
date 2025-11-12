@@ -42,10 +42,11 @@ app.add_middleware(
 )
 
 # === Routers ===
-from app.routers import tickets
+from app.routers import tickets, departments
 
 app.include_router(auth.router)
 app.include_router(tickets.router)
+app.include_router(departments.router)
 
 
 @app.on_event("startup")

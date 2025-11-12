@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.settings import SystemSettings
 from app.schemas.ticket import TicketCreate, TicketUpdate
 from app.services.ml_service import ml_service
+from app.services.assignee_service import assignee_service
 
 
 class TicketService:
@@ -94,6 +95,30 @@ class TicketService:
                 if ticket.category_ml_suggested:
                     ticket.category = ticket.category_ml_suggested
                     ticket.category_accepted = True
+
+            # 3.5. Автоматичне призначення спеціаліста (якщо високий confidence)
+            if not ticket.triage_required and ticket.category_ml_suggested:
+                # Спочатку пробуємо learning-based метод (на основі ключових слів та історії)
+                full_text = f"{ticket.title}\n{ticket.description}"
+                recommended_agent = assignee_service.recommend_by_expertise(
+                    ticket_text=full_text,
+                    category=ticket.category_ml_suggested,
+                    department_id=ticket.department_id,
+                    db=db
+                )
+
+                # Якщо learning-based метод не знайшов (немає історії), fallback на recommend_assignee
+                if not recommended_agent:
+                    recommended_agent = assignee_service.recommend_assignee(
+                        category=ticket.category_ml_suggested,
+                        department_id=ticket.department_id,
+                        db=db
+                    )
+
+                if recommended_agent:
+                    ticket.agent_id = recommended_agent.id
+                    ticket.agent_assigned_at = datetime.utcnow()
+                    print(f"[AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено {recommended_agent.full_name}")
 
             # 4. Визначення статусу
             if ticket.triage_required:

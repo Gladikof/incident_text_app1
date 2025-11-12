@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link" style="color: var(--primary);">Analytics</a></li>
+            <li><a href="#" class="nav-link" id="user-name">...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 2rem;">📊 Analytics Dashboard</h1>
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--gray-light); font-size: 0.875rem; margin-bottom: 0.5rem;">Всього тікетів</h3>
+                <p id="stat-total" style="font-size: 2rem; font-weight: 700; color: var(--primary);">0</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--gray-light); font-size: 0.875rem; margin-bottom: 0.5rem;">ML Accuracy</h3>
+                <p id="stat-ml-accuracy" style="font-size: 2rem; font-weight: 700; color: var(--success);">-</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--gray-light); font-size: 0.875rem; margin-bottom: 0.5rem;">Тріаж потрібен</h3>
+                <p id="stat-triage" style="font-size: 2rem; font-weight: 700; color: var(--warning);">0</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--gray-light); font-size: 0.875rem; margin-bottom: 0.5rem;">Avg Response Time</h3>
+                <p id="stat-response-time" style="font-size: 2rem; font-weight: 700; color: var(--primary);">-</p>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 1.5rem;">
+
+            <!-- Tickets by Status -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">Тікети за статусом</h2>
+                <canvas id="chart-status"></canvas>
+            </div>
+
+            <!-- Tickets by Priority -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">Розподіл за пріоритетом</h2>
+                <canvas id="chart-priority"></canvas>
+            </div>
+
+            <!-- ML Category Distribution -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">Категорії (ML)</h2>
+                <canvas id="chart-categories"></canvas>
+            </div>
+
+            <!-- ML Performance Over Time (PLACEHOLDER) -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">
+                    🤖 ML Performance (Placeholder)
+                    <span class="badge" style="background: #78350f; color: #fde047; margin-left: 0.5rem; font-size: 0.75rem;">DEMO</span>
+                </h2>
+                <canvas id="chart-ml-performance"></canvas>
+                <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--gray-light);">
+                    📝 Це заготовка для майбутнього аналізу точності ML моделі в часі.
+                    Потрібно накопичити історичні дані для реального графіка.
+                </p>
+            </div>
+
+            <!-- Triage Statistics (PLACEHOLDER) -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">
+                    Статистика тріажу (Placeholder)
+                    <span class="badge" style="background: #78350f; color: #fde047; margin-left: 0.5rem; font-size: 0.75rem;">DEMO</span>
+                </h2>
+                <canvas id="chart-triage"></canvas>
+                <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--gray-light);">
+                    📝 Заготовка для аналізу швидкості тріажу та причин низької впевненості ML.
+                </p>
+            </div>
+
+            <!-- Response Time Trends (PLACEHOLDER) -->
+            <div class="card">
+                <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">
+                    Час відгуку агентів (Placeholder)
+                    <span class="badge" style="background: #78350f; color: #fde047; margin-left: 0.5rem; font-size: 0.75rem;">DEMO</span>
+                </h2>
+                <canvas id="chart-response-time"></canvas>
+                <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--gray-light);">
+                    📝 Заготовка для відстеження часу між створенням тікета та першою відповіддю агента.
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script>
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        document.getElementById('user-name').textContent = user.email || 'User';
+
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            api.logout();
+            window.location.href = 'login.html';
+        });
+
+        // Chart.js default config
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = '#1e293b';
+        Chart.defaults.backgroundColor = 'rgba(59, 130, 246, 0.5)';
+
+        let charts = {};
+
+        async function loadAnalytics() {
+            try {
+                // Get all tickets
+                const tickets = await api.getTickets({});
+
+                // Calculate stats
+                document.getElementById('stat-total').textContent = tickets.length;
+
+                const triageCount = tickets.filter(t => t.triage_required).length;
+                document.getElementById('stat-triage').textContent = triageCount;
+
+                // Group by status
+                const statusCounts = {
+                    'NEW': 0,
+                    'TRIAGE': 0,
+                    'IN_PROGRESS': 0,
+                    'RESOLVED': 0,
+                    'CLOSED': 0
+                };
+                tickets.forEach(t => {
+                    if (statusCounts[t.status] !== undefined) {
+                        statusCounts[t.status]++;
+                    }
+                });
+
+                // Group by priority
+                const priorityCounts = { 'P1': 0, 'P2': 0, 'P3': 0 };
+                tickets.forEach(t => {
+                    if (priorityCounts[t.priority_manual] !== undefined) {
+                        priorityCounts[t.priority_manual]++;
+                    }
+                });
+
+                // Group by ML category
+                const categoryCounts = {};
+                tickets.forEach(t => {
+                    if (t.category_ml_suggested) {
+                        categoryCounts[t.category_ml_suggested] = (categoryCounts[t.category_ml_suggested] || 0) + 1;
+                    }
+                });
+
+                // Render charts
+                renderStatusChart(statusCounts);
+                renderPriorityChart(priorityCounts);
+                renderCategoryChart(categoryCounts);
+                renderMLPerformancePlaceholder();
+                renderTriagePlaceholder();
+                renderResponseTimePlaceholder();
+
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+            }
+        }
+
+        function renderStatusChart(data) {
+            const ctx = document.getElementById('chart-status').getContext('2d');
+            if (charts.status) charts.status.destroy();
+
+            charts.status = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        label: 'Тікети',
+                        data: Object.values(data),
+                        backgroundColor: [
+                            'rgba(147, 197, 253, 0.7)',  // NEW - blue
+                            'rgba(253, 224, 71, 0.7)',   // TRIAGE - yellow
+                            'rgba(134, 239, 172, 0.7)',  // IN_PROGRESS - green
+                            'rgba(147, 197, 253, 0.7)',  // RESOLVED - blue
+                            'rgba(156, 163, 175, 0.7)'   // CLOSED - gray
+                        ],
+                        borderColor: [
+                            'rgb(147, 197, 253)',
+                            'rgb(253, 224, 71)',
+                            'rgb(134, 239, 172)',
+                            'rgb(147, 197, 253)',
+                            'rgb(156, 163, 175)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderPriorityChart(data) {
+            const ctx = document.getElementById('chart-priority').getContext('2d');
+            if (charts.priority) charts.priority.destroy();
+
+            charts.priority = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: [
+                            'rgba(220, 38, 38, 0.7)',   // P1 - red
+                            'rgba(245, 158, 11, 0.7)',  // P2 - orange
+                            'rgba(59, 130, 246, 0.7)'   // P3 - blue
+                        ],
+                        borderColor: [
+                            'rgb(220, 38, 38)',
+                            'rgb(245, 158, 11)',
+                            'rgb(59, 130, 246)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderCategoryChart(data) {
+            const ctx = document.getElementById('chart-categories').getContext('2d');
+            if (charts.categories) charts.categories.destroy();
+
+            charts.categories = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.7)',
+                            'rgba(134, 239, 172, 0.7)',
+                            'rgba(245, 158, 11, 0.7)',
+                            'rgba(147, 197, 253, 0.7)',
+                            'rgba(156, 163, 175, 0.7)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderMLPerformancePlaceholder() {
+            const ctx = document.getElementById('chart-ml-performance').getContext('2d');
+            if (charts.mlPerf) charts.mlPerf.destroy();
+
+            // Demo data - accuracy over time
+            const demoData = {
+                labels: ['Тиждень 1', 'Тиждень 2', 'Тиждень 3', 'Тиждень 4', 'Тиждень 5', 'Тиждень 6'],
+                accuracy: [0.72, 0.78, 0.81, 0.85, 0.87, 0.89]
+            };
+
+            charts.mlPerf = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: demoData.labels,
+                    datasets: [{
+                        label: 'Accuracy',
+                        data: demoData.accuracy,
+                        borderColor: 'rgb(34, 197, 94)',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: 0.5,
+                            max: 1.0,
+                            ticks: {
+                                callback: function(value) {
+                                    return (value * 100) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('stat-ml-accuracy').textContent = '89%';
+        }
+
+        function renderTriagePlaceholder() {
+            const ctx = document.getElementById('chart-triage').getContext('2d');
+            if (charts.triage) charts.triage.destroy();
+
+            // Demo data - triage reasons
+            const demoData = {
+                labels: ['Low Priority Conf', 'Low Category Conf', 'Conflicting Signals', 'Complex Issue'],
+                values: [15, 12, 8, 5]
+            };
+
+            charts.triage = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: demoData.labels,
+                    datasets: [{
+                        label: 'Кількість',
+                        data: demoData.values,
+                        backgroundColor: 'rgba(245, 158, 11, 0.7)',
+                        borderColor: 'rgb(245, 158, 11)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 5 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderResponseTimePlaceholder() {
+            const ctx = document.getElementById('chart-response-time').getContext('2d');
+            if (charts.responseTime) charts.responseTime.destroy();
+
+            // Demo data - avg response time in hours
+            const demoData = {
+                labels: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'],
+                times: [2.5, 1.8, 2.2, 1.5, 2.0, 4.5, 5.2]
+            };
+
+            charts.responseTime = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: demoData.labels,
+                    datasets: [{
+                        label: 'Avg Response (hours)',
+                        data: demoData.times,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + 'h';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('stat-response-time').textContent = '2.5h';
+        }
+
+        // Initial load
+        loadAnalytics();
+    </script>
+</body>
+</html>

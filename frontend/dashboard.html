@@ -13,6 +13,8 @@
         <ul class="navbar-nav">
             <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
             <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link">Analytics</a></li>
             <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
             <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
         </ul>
@@ -44,14 +46,20 @@
         <!-- Quick Actions -->
         <div class="card">
             <h2 style="margin-bottom: 1rem;">Швидкі дії</h2>
-            <div style="display: flex; gap: 1rem;">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                 <a href="tickets.html" class="btn btn-primary">
                     📋 Переглянути тікети
+                </a>
+                <a href="board.html" class="btn" style="background: var(--primary); color: white;">
+                    📊 Kanban Board
+                </a>
+                <a href="analytics.html" class="btn" style="background: var(--success); color: white;">
+                    📈 Analytics
                 </a>
                 <a href="create-ticket.html" class="btn btn-secondary">
                     ➕ Створити тікет
                 </a>
-                <a href="http://127.0.0.1:8001/docs" target="_blank" class="btn" style="background: var(--dark-lighter); color: var(--text);">
+                <a href="http://127.0.0.1:8003/docs" target="_blank" class="btn" style="background: var(--dark-lighter); color: var(--text);">
                     📚 API Docs
                 </a>
             </div>
