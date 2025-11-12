@@ -249,7 +249,7 @@ def assign_ticket(
     """
     ticket = ticket_service.assign_ticket(
         ticket_id=ticket_id,
-        assignee_id=assign_data.assignee_id,
+        assignee_id=assign_data.assigned_to_user_id,
         db=db,
     )
     return ticket
@@ -323,3 +323,76 @@ def recalculate_ml(
     db.refresh(ticket)
 
     return ticket
+
+
+@router.post("/{ticket_id}/assignment/confirm")
+def confirm_assignment(
+    ticket_id: int,
+    confirmed: bool,
+    feedback: Optional[str] = None,
+    current_user: User = Depends(require_agent_or_higher),
+    db: Session = Depends(get_db),
+):
+    """
+    Підтвердити або відхилити автоматичне призначення тікету.
+
+    Доступно: AGENT, LEAD, ADMIN (тільки той, кому призначено тікет).
+
+    Args:
+        ticket_id: ID тікету
+        confirmed: True = підтверджую, False = відхиляю (не мій відділ/спеціалізація)
+        feedback: Опціональний коментар від спеціаліста
+
+    Використання для навчання:
+    - confirmed=True → позитивна класифікація (система правильно призначила)
+    - confirmed=False → негативна класифікація (система помилилась, треба перенавчити)
+    """
+    from datetime import datetime
+
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Перевіряємо що тікет призначено поточному користувачу
+    if ticket.assigned_to_user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only confirm/reject assignments for tickets assigned to you"
+        )
+
+    # Перевіряємо що це автоматичне призначення
+    if not ticket.auto_assigned:
+        raise HTTPException(
+            status_code=400,
+            detail="This ticket was not auto-assigned"
+        )
+
+    # Перевіряємо що ще не підтверджено
+    if ticket.assignment_confirmed is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Assignment already confirmed/rejected"
+        )
+
+    # Зберігаємо підтвердження
+    ticket.assignment_confirmed = confirmed
+    ticket.assignment_confirmed_at = datetime.utcnow()
+    ticket.assignment_feedback = feedback
+
+    # Якщо відхилено - знімаємо призначення
+    if not confirmed:
+        ticket.assigned_to_user_id = None
+        ticket.status = StatusEnum.TRIAGE  # Відправляємо в тріаж для ручного призначення
+        print(f"[ASSIGNMENT REJECTED] Тікет #{ticket.incident_id} відхилено {current_user.full_name}. Причина: {feedback}")
+    else:
+        print(f"[ASSIGNMENT CONFIRMED] Тікет #{ticket.incident_id} підтверджено {current_user.full_name}")
+
+    db.commit()
+    db.refresh(ticket)
+
+    return {
+        "success": True,
+        "ticket_id": ticket.id,
+        "confirmed": confirmed,
+        "message": "Дякуємо за підтвердження!" if confirmed else "Тікет буде перепризначено через LEAD"
+    }

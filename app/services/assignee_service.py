@@ -57,21 +57,21 @@ class AssigneeService:
         for agent in agents:
             # Кількість активних тікетів
             active_count = db.query(Ticket).filter(
-                Ticket.agent_id == agent.id,
+                Ticket.assigned_to_user_id == agent.id,
                 Ticket.status.in_([StatusEnum.NEW, StatusEnum.TRIAGE, StatusEnum.IN_PROGRESS])
             ).count()
 
             # Кількість вирішених тікетів по категорії
             experience_count = db.query(Ticket).filter(
-                Ticket.agent_id == agent.id,
+                Ticket.assigned_to_user_id == agent.id,
                 Ticket.status.in_([StatusEnum.RESOLVED, StatusEnum.CLOSED]),
-                Ticket.category_final == category
+                Ticket.category == category
             ).count()
 
-            # Альтернатива: рахуємо по ML suggested category якщо category_final не встановлено
+            # Альтернатива: рахуємо по ML suggested category якщо category не встановлено
             if experience_count == 0:
                 experience_count = db.query(Ticket).filter(
-                    Ticket.agent_id == agent.id,
+                    Ticket.assigned_to_user_id == agent.id,
                     Ticket.status.in_([StatusEnum.RESOLVED, StatusEnum.CLOSED]),
                     Ticket.category_ml_suggested == category
                 ).count()
@@ -153,7 +153,7 @@ class AssigneeService:
 
         for agent in agents_list:
             active_count = db.query(Ticket).filter(
-                Ticket.agent_id == agent.id,
+                Ticket.assigned_to_user_id == agent.id,
                 Ticket.status.in_([StatusEnum.NEW, StatusEnum.TRIAGE, StatusEnum.IN_PROGRESS])
             ).count()
 

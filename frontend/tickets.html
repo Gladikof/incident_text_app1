@@ -107,6 +107,7 @@
     <script src="js/auth-guard.js"></script>
     <script>
         const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const currentUser = user; // Alias for consistency
         document.getElementById('user-name').textContent = user.email || 'User';
 
         document.getElementById('logout-btn').addEventListener('click', (e) => {
@@ -358,9 +359,59 @@
                             <strong>Департамент:</strong> ${ticket.department ? ticket.department.name : 'N/A'}
                         </div>
                         <div>
-                            <strong>Виконавець:</strong> ${ticket.agent ? ticket.agent.email : 'Не призначено'}
+                            <strong>Виконавець:</strong> ${ticket.assigned_to ? ticket.assigned_to.email : 'Не призначено'}
+                            ${ticket.auto_assigned && ticket.assignment_confirmed === null ?
+                                '<span style="color: var(--warning); margin-left: 0.5rem;">(автоматично, очікує підтвердження)</span>' : ''}
+                            ${ticket.auto_assigned && ticket.assignment_confirmed === true ?
+                                '<span style="color: var(--success); margin-left: 0.5rem;">(підтверджено)</span>' : ''}
+                            ${ticket.auto_assigned && ticket.assignment_confirmed === false ?
+                                '<span style="color: var(--danger); margin-left: 0.5rem;">(відхилено)</span>' : ''}
                         </div>
                     </div>
+
+                    <!-- Manual Assignment (for LEAD/ADMIN) -->
+                    ${(currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') && !ticket.assigned_to ? `
+                        <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
+                            <h4 style="margin: 0 0 1rem 0; font-weight: 600;">👤 Призначити виконавця</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+                                <div>
+                                    <label class="form-label" style="display: block; margin-bottom: 0.5rem;">1. Оберіть департамент:</label>
+                                    <select id="department-select-${ticket.id}" class="form-input" style="width: 100%;" onchange="loadAgentsByDepartment(${ticket.id})">
+                                        <option value="">-- Оберіть департамент --</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label" style="display: block; margin-bottom: 0.5rem;">2. Оберіть спеціаліста:</label>
+                                    <select id="assignee-select-${ticket.id}" class="form-input" style="width: 100%;" disabled>
+                                        <option value="">-- Спочатку оберіть департамент --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button onclick="assignTicket(${ticket.id})" class="btn btn-primary" style="width: 100%;">
+                                Призначити
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <!-- Assignment Confirmation (if auto-assigned and not confirmed yet) -->
+                    ${ticket.auto_assigned && ticket.assignment_confirmed === null && ticket.assigned_to && ticket.assigned_to.id === currentUser.id ? `
+                        <div style="background: var(--warning-bg, #2d2a1a); border: 1px solid var(--warning); border-radius: 8px; padding: 1rem; margin-top: 1.5rem;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--warning);">Підтвердження призначення</h4>
+                            <p style="margin: 0 0 1rem 0; font-size: 0.875rem;">
+                                Цей тікет було автоматично призначено вам. Чи відповідає він вашій спеціалізації?
+                            </p>
+                            <textarea id="assignment-feedback" placeholder="Опціонально: коментар про призначення"
+                                style="width: 100%; padding: 0.5rem; background: var(--dark); border: 1px solid var(--border); color: var(--text); border-radius: 4px; margin-bottom: 0.75rem; font-family: inherit;"></textarea>
+                            <div style="display: flex; gap: 0.75rem;">
+                                <button onclick="confirmAssignment(${ticket.id}, true)" class="btn btn-success" style="flex: 1;">
+                                    Підтверджую (мій відділ)
+                                </button>
+                                <button onclick="confirmAssignment(${ticket.id}, false)" class="btn btn-danger" style="flex: 1;">
+                                    Відхиляю (не моя спеціалізація)
+                                </button>
+                            </div>
+                        </div>
+                    ` : ''}
 
                     <!-- Action Buttons -->
                     ${actionButtons ? `<div style="border-top: 1px solid var(--border); padding-top: 1.5rem;">${actionButtons}</div>` : ''}
@@ -368,6 +419,11 @@
             `;
 
             document.getElementById('modal-body').innerHTML = modalContent;
+
+            // Load departments list for assignment dropdown (if visible)
+            if ((currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') && !ticket.assigned_to) {
+                loadDepartmentsForAssignment(ticket.id);
+            }
         }
 
         async function claimTicket(ticketId) {
@@ -399,6 +455,152 @@
                 await api.updateTicket(ticketId, { priority_manual: newPriority });
                 alert('Пріоритет оновлено!');
                 await openTicketModal(ticketId); // Reload modal
+                loadTickets(); // Reload list
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function loadDepartmentsForAssignment(ticketId) {
+            try {
+                // Fetch all departments
+                const response = await fetch(`${API_BASE_URL}/departments`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (!response.ok) throw new Error('Failed to load departments');
+
+                const departments = await response.json();
+
+                // Populate department dropdown
+                const deptSelect = document.getElementById(`department-select-${ticketId}`);
+                if (deptSelect) {
+                    // Clear existing options except first
+                    deptSelect.innerHTML = '<option value="">-- Оберіть департамент --</option>';
+
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept.id;
+                        option.textContent = dept.name;
+                        deptSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load departments:', error);
+                alert('Помилка завантаження департаментів: ' + error.message);
+            }
+        }
+
+        async function loadAgentsByDepartment(ticketId) {
+            const deptSelect = document.getElementById(`department-select-${ticketId}`);
+            const deptId = deptSelect?.value;
+            const agentSelect = document.getElementById(`assignee-select-${ticketId}`);
+
+            if (!agentSelect) return;
+
+            // Clear and disable if no department selected
+            if (!deptId) {
+                agentSelect.innerHTML = '<option value="">-- Спочатку оберіть департамент --</option>';
+                agentSelect.disabled = true;
+                return;
+            }
+
+            try {
+                // Fetch all users
+                const response = await fetch(`${API_BASE_URL}/admin/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (!response.ok) throw new Error('Failed to load agents');
+
+                const users = await response.json();
+
+                // Filter agents by selected department and active status
+                const agents = users.filter(u =>
+                    (u.role === 'AGENT' || u.role === 'LEAD') &&
+                    u.is_active &&
+                    u.department_id === parseInt(deptId)
+                );
+
+                // Populate agent dropdown
+                agentSelect.innerHTML = '<option value="">-- Оберіть спеціаліста --</option>';
+
+                if (agents.length === 0) {
+                    agentSelect.innerHTML = '<option value="">Немає доступних спеціалістів у цьому департаменті</option>';
+                    agentSelect.disabled = true;
+                } else {
+                    agents.forEach(agent => {
+                        const option = document.createElement('option');
+                        option.value = agent.id;
+                        option.textContent = `${agent.full_name || agent.email} (${agent.role})${agent.specialty ? ' - ' + agent.specialty : ''}`;
+                        agentSelect.appendChild(option);
+                    });
+                    agentSelect.disabled = false;
+                }
+            } catch (error) {
+                console.error('Failed to load agents:', error);
+                alert('Помилка завантаження спеціалістів: ' + error.message);
+            }
+        }
+
+        async function assignTicket(ticketId) {
+            const select = document.getElementById(`assignee-select-${ticketId}`);
+            const assigneeId = select?.value;
+
+            if (!assigneeId) {
+                alert('Будь ласка, оберіть спеціаліста');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/assign`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        assigned_to_user_id: parseInt(assigneeId)
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to assign ticket');
+                }
+
+                alert('Тікет успішно призначено!');
+                closeModal();
+                loadTickets(); // Reload list
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function confirmAssignment(ticketId, confirmed) {
+            const feedback = document.getElementById('assignment-feedback')?.value || null;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/assignment/confirm?confirmed=${confirmed}&feedback=${encodeURIComponent(feedback || '')}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to confirm assignment');
+                }
+
+                const result = await response.json();
+                alert(result.message);
+                closeModal();
                 loadTickets(); // Reload list
             } catch (error) {
                 alert('Помилка: ' + error.message);

@@ -42,11 +42,12 @@ app.add_middleware(
 )
 
 # === Routers ===
-from app.routers import tickets, departments
+from app.routers import tickets, departments, users
 
 app.include_router(auth.router)
 app.include_router(tickets.router)
 app.include_router(departments.router)
+app.include_router(users.router)
 
 
 @app.on_event("startup")
@@ -126,3 +127,4 @@ def ui_llm():
     Legacy: редірект на старий UI.
     """
     return RedirectResponse(url="/ui_llm_static/index.html")
+

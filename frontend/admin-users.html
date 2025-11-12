@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управління Користувачами - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">Service Desk - Управління Користувачами</div>
+        <div class="navbar-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="tickets.html">Тікети</a>
+            <a href="board.html">Board</a>
+            <a href="analytics.html">Analytics</a>
+            <a href="admin-users.html" class="active">Users</a>
+            <a href="admin-departments.html">Departments</a>
+            <span id="user-email"></span>
+            <a href="login.html" onclick="logout()">Вихід</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>Управління Користувачами</h1>
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn btn-primary" onclick="openCreateModal()">+ Створити користувача</button>
+                <button class="btn btn-secondary" onclick="location.reload()">Оновити</button>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <table style="width: 100%; background: var(--dark); border-radius: 8px; overflow: hidden;">
+            <thead>
+                <tr style="background: var(--dark-lighter);">
+                    <th style="padding: 1rem; text-align: left;">ID</th>
+                    <th style="padding: 1rem; text-align: left;">Email</th>
+                    <th style="padding: 1rem; text-align: left;">Ім'я</th>
+                    <th style="padding: 1rem; text-align: left;">Роль</th>
+                    <th style="padding: 1rem; text-align: left;">Департамент</th>
+                    <th style="padding: 1rem; text-align: left;">Статус</th>
+                    <th style="padding: 1rem; text-align: left;">Спеціалізація</th>
+                    <th style="padding: 1rem; text-align: left;">Дії</th>
+                </tr>
+            </thead>
+            <tbody id="users-table-body">
+                <tr>
+                    <td colspan="8" style="padding: 2rem; text-align: center;">Завантаження...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="create-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0;">Створити Користувача</h2>
+                <button onclick="closeCreateModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-light);">&times;</button>
+            </div>
+
+            <form id="create-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Email: *</label>
+                    <input type="email" id="create-email" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Пароль: *</label>
+                    <input type="password" id="create-password" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Ім'я:</label>
+                    <input type="text" id="create-fullname" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Роль: *</label>
+                    <select id="create-role" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="USER">USER</option>
+                        <option value="AGENT">AGENT</option>
+                        <option value="LEAD">LEAD</option>
+                        <option value="ADMIN">ADMIN</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Департамент:</label>
+                    <select id="create-department" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="">-- Без департаменту --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Спеціалізація (через кому):</label>
+                    <textarea id="create-specialty" rows="3" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: inherit;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Створити</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateModal()" style="flex: 1;">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0;">Редагування Користувача</h2>
+                <button onclick="closeEditModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-light);">&times;</button>
+            </div>
+
+            <form id="edit-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                <input type="hidden" id="edit-user-id">
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Email:</label>
+                    <input type="email" id="edit-email" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Ім'я:</label>
+                    <input type="text" id="edit-fullname" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Роль:</label>
+                    <select id="edit-role" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="USER">USER</option>
+                        <option value="AGENT">AGENT</option>
+                        <option value="LEAD">LEAD</option>
+                        <option value="ADMIN">ADMIN</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Статус:</label>
+                    <select id="edit-active" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="true">Активний</option>
+                        <option value="false">Неактивний</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Департамент:</label>
+                    <select id="edit-department" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                        <option value="">-- Без департаменту --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Спеціалізація (через кому):</label>
+                    <textarea id="edit-specialty" rows="3" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: inherit;"></textarea>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Новий пароль (залишити пустим, якщо не змінювати):</label>
+                    <input type="password" id="edit-password" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Зберегти</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="flex: 1;">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:8003';
+
+        // Check auth
+        const token = localStorage.getItem('token');
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Check admin
+        if (currentUser.role !== 'ADMIN') {
+            alert('Доступ заборонено. Тільки для адміністраторів.');
+            window.location.href = 'dashboard.html';
+        }
+
+        document.getElementById('user-email').textContent = currentUser.email;
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+        }
+
+        // Load users
+        async function loadUsers() {
+            try {
+                const [usersResponse, deptsResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/admin/users`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_BASE_URL}/departments`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+
+                if (!usersResponse.ok) throw new Error('Failed to load users');
+                if (!deptsResponse.ok) throw new Error('Failed to load departments');
+
+                const users = await usersResponse.json();
+                const departments = await deptsResponse.json();
+
+                // Create department map
+                const deptMap = {};
+                departments.forEach(dept => {
+                    deptMap[dept.id] = dept.name;
+                });
+
+                renderUsersTable(users, deptMap);
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        function renderUsersTable(users, deptMap) {
+            const tbody = document.getElementById('users-table-body');
+
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="padding: 2rem; text-align: center;">Немає користувачів</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => `
+                <tr style="border-top: 1px solid var(--border);">
+                    <td style="padding: 1rem;">${user.id}</td>
+                    <td style="padding: 1rem;">${user.email}</td>
+                    <td style="padding: 1rem;">${user.full_name || 'N/A'}</td>
+                    <td style="padding: 1rem;">
+                        <span class="badge badge-${getRoleBadge(user.role)}">${user.role}</span>
+                        ${user.is_lead ? '<span class="badge badge-warning" style="margin-left: 0.25rem;">LEAD</span>' : ''}
+                    </td>
+                    <td style="padding: 1rem;">
+                        ${user.department_id ? deptMap[user.department_id] || `ID: ${user.department_id}` : '-'}
+                    </td>
+                    <td style="padding: 1rem;">
+                        <span class="badge badge-${user.is_active ? 'success' : 'danger'}">
+                            ${user.is_active ? 'Активний' : 'Неактивний'}
+                        </span>
+                    </td>
+                    <td style="padding: 1rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${user.specialty || '-'}
+                    </td>
+                    <td style="padding: 1rem;">
+                        <button class="btn btn-sm btn-primary" onclick='openEditModal(${JSON.stringify(user)})'>
+                            Редагувати
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function getRoleBadge(role) {
+            const badges = {
+                'ADMIN': 'danger',
+                'LEAD': 'warning',
+                'AGENT': 'info',
+                'USER': 'secondary'
+            };
+            return badges[role] || 'secondary';
+        }
+
+        function openEditModal(user) {
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('edit-email').value = user.email;
+            document.getElementById('edit-fullname').value = user.full_name || '';
+            document.getElementById('edit-role').value = user.role;
+            document.getElementById('edit-active').value = user.is_active.toString();
+            document.getElementById('edit-specialty').value = user.specialty || '';
+            document.getElementById('edit-password').value = '';
+
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId = document.getElementById('edit-user-id').value;
+            const data = {
+                email: document.getElementById('edit-email').value,
+                full_name: document.getElementById('edit-fullname').value || null,
+                role: document.getElementById('edit-role').value,
+                is_active: document.getElementById('edit-active').value === 'true',
+                specialty: document.getElementById('edit-specialty').value || null,
+            };
+
+            const password = document.getElementById('edit-password').value;
+            if (password) {
+                data.password = password;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to update user');
+                }
+
+                alert('Користувача оновлено!');
+                closeEditModal();
+                loadUsers();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        });
+
+        // Create user modal
+        async function openCreateModal() {
+            // Load departments for dropdown
+            try {
+                const response = await fetch(`${API_BASE_URL}/departments`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const departments = await response.json();
+                    const deptSelect = document.getElementById('create-department');
+                    deptSelect.innerHTML = '<option value="">-- Без департаменту --</option>';
+                    departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept.id;
+                        option.textContent = dept.name;
+                        deptSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load departments:', error);
+            }
+
+            // Clear form
+            document.getElementById('create-email').value = '';
+            document.getElementById('create-password').value = '';
+            document.getElementById('create-fullname').value = '';
+            document.getElementById('create-role').value = 'USER';
+            document.getElementById('create-specialty').value = '';
+            document.getElementById('create-modal').style.display = 'flex';
+        }
+
+        function closeCreateModal() {
+            document.getElementById('create-modal').style.display = 'none';
+        }
+
+        document.getElementById('create-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const deptValue = document.getElementById('create-department').value;
+            const data = {
+                email: document.getElementById('create-email').value,
+                password: document.getElementById('create-password').value,
+                full_name: document.getElementById('create-fullname').value || null,
+                role: document.getElementById('create-role').value,
+                is_active: true,
+                department_id: deptValue ? parseInt(deptValue) : null,
+                specialty: document.getElementById('create-specialty').value || null,
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/admin/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create user');
+                }
+
+                alert('Користувача створено!');
+                closeCreateModal();
+                loadUsers();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        });
+
+        // Initial load
+        loadUsers();
+    </script>
+
+    <style>
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-danger { background: var(--danger); color: white; }
+        .badge-warning { background: var(--warning); color: var(--dark); }
+        .badge-info { background: var(--primary); color: white; }
+        .badge-success { background: var(--success); color: white; }
+        .badge-secondary { background: var(--gray); color: white; }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</body>
+</html>

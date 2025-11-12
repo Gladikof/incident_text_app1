@@ -116,8 +116,9 @@ class TicketService:
                     )
 
                 if recommended_agent:
-                    ticket.agent_id = recommended_agent.id
-                    ticket.agent_assigned_at = datetime.utcnow()
+                    ticket.assigned_to_user_id = recommended_agent.id
+                    ticket.auto_assigned = True  # Позначаємо що призначено автоматично
+                    ticket.assignment_confirmed = None  # Очікує підтвердження від спеціаліста
                     print(f"[AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено {recommended_agent.full_name}")
 
             # 4. Визначення статусу
@@ -243,7 +244,8 @@ class TicketService:
         if not ticket:
             raise HTTPException(status_code=404, detail="Ticket not found")
 
-        if ticket.self_assign_locked:
+        # LEAD може взяти будь-який тікет, навіть на тріажі
+        if ticket.self_assign_locked and agent.role != RoleEnum.LEAD:
             raise HTTPException(
                 status_code=403,
                 detail="Ticket is locked for self-assign (pending triage)",
@@ -253,12 +255,13 @@ class TicketService:
             raise HTTPException(status_code=400, detail="Ticket already assigned")
 
         # Перевірка scope (DEPT vs ALL)
-        if settings.self_assign_scope.name == "DEPT":
-            if agent.department_id != ticket.department_id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Can only claim tickets from your department",
-                )
+        if hasattr(settings, 'agent_visibility_scope') and settings.agent_visibility_scope:
+            if settings.agent_visibility_scope.name == "DEPT":
+                if agent.department_id != ticket.department_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Can only claim tickets from your department",
+                    )
 
         ticket.assigned_to_user_id = agent.id
         ticket.status = StatusEnum.IN_PROGRESS

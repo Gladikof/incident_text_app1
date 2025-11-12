@@ -67,16 +67,35 @@ class LearningService:
             }
         """
         # Отримуємо всі вирішені/закриті тікети
+        # Враховуємо тільки ті, що:
+        # 1. Вирішені/закриті
+        # 2. Призначені комусь
+        # 3. Якщо це auto_assigned - то тільки з assignment_confirmed=True (підтверджені спеціалістом)
         resolved_tickets = db.query(Ticket).filter(
             Ticket.status.in_([StatusEnum.RESOLVED, StatusEnum.CLOSED]),
-            Ticket.agent_id.isnot(None)
+            Ticket.assigned_to_user_id.isnot(None)
         ).all()
+
+        # Фільтруємо: якщо auto_assigned=True, беремо тільки підтверджені (assignment_confirmed=True)
+        # або ті, що не були auto_assigned (ручне призначення завжди вважається правильним)
+        valid_tickets = []
+        for ticket in resolved_tickets:
+            if ticket.auto_assigned:
+                # Якщо автоматично призначено - беремо тільки підтверджені
+                if ticket.assignment_confirmed is True:
+                    valid_tickets.append(ticket)
+                # Якщо відхилено (False) або не підтверджено (None) - пропускаємо
+            else:
+                # Ручне призначення завжди правильне
+                valid_tickets.append(ticket)
+
+        resolved_tickets = valid_tickets
 
         # Словник: agent_id -> {keyword: count}
         expertise: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
         for ticket in resolved_tickets:
-            agent_id = ticket.agent_id
+            agent_id = ticket.assigned_to_user_id
             if not agent_id:
                 continue
 
@@ -147,7 +166,7 @@ class LearningService:
 
             # Враховуємо поточне навантаження (віднімаємо активні тікети)
             active_count = db.query(Ticket).filter(
-                Ticket.agent_id == agent.id,
+                Ticket.assigned_to_user_id == agent.id,
                 Ticket.status.in_([StatusEnum.NEW, StatusEnum.TRIAGE, StatusEnum.IN_PROGRESS])
             ).count()
 
@@ -177,7 +196,7 @@ class LearningService:
         """
         # Вирішені тікети
         resolved_tickets = db.query(Ticket).filter(
-            Ticket.agent_id == agent_id,
+            Ticket.assigned_to_user_id == agent_id,
             Ticket.status.in_([StatusEnum.RESOLVED, StatusEnum.CLOSED])
         ).all()
 
@@ -186,8 +205,8 @@ class LearningService:
         # По категоріях
         by_category = defaultdict(int)
         for ticket in resolved_tickets:
-            if ticket.category_final:
-                by_category[ticket.category_final.value] += 1
+            if ticket.category:
+                by_category[ticket.category.value] += 1
 
         # Топ-10 ключових слів
         expertise_profiles = LearningService.build_expertise_profiles(db)

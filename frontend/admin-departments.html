@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управління Департаментами - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">Service Desk - Управління Департаментами</div>
+        <div class="navbar-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="tickets.html">Тікети</a>
+            <a href="board.html">Board</a>
+            <a href="analytics.html">Analytics</a>
+            <a href="admin-users.html">Users</a>
+            <a href="admin-departments.html" class="active">Departments</a>
+            <span id="user-email"></span>
+            <a href="login.html" onclick="logout()">Вихід</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>Управління Департаментами</h1>
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn btn-primary" onclick="openCreateModal()">+ Створити департамент</button>
+                <button class="btn btn-secondary" onclick="location.reload()">Оновити</button>
+            </div>
+        </div>
+
+        <!-- Departments Table -->
+        <table style="width: 100%; background: var(--dark); border-radius: 8px; overflow: hidden;">
+            <thead>
+                <tr style="background: var(--dark-lighter);">
+                    <th style="padding: 1rem; text-align: left;">ID</th>
+                    <th style="padding: 1rem; text-align: left;">Назва</th>
+                    <th style="padding: 1rem; text-align: left;">Опис</th>
+                    <th style="padding: 1rem; text-align: left;">Кількість співробітників</th>
+                    <th style="padding: 1rem; text-align: left;">Дії</th>
+                </tr>
+            </thead>
+            <tbody id="departments-table-body">
+                <tr>
+                    <td colspan="5" style="padding: 2rem; text-align: center;">Завантаження...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Create Department Modal -->
+    <div id="create-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0;">Створити Департамент</h2>
+                <button onclick="closeCreateModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-light);">&times;</button>
+            </div>
+
+            <form id="create-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Назва департаменту:</label>
+                    <input type="text" id="create-name" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Опис:</label>
+                    <textarea id="create-description" rows="3" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: inherit;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Створити</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateModal()" style="flex: 1;">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Department Modal -->
+    <div id="edit-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0;">Редагування Департаменту</h2>
+                <button onclick="closeEditModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-light);">&times;</button>
+            </div>
+
+            <form id="edit-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                <input type="hidden" id="edit-dept-id">
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Назва департаменту:</label>
+                    <input type="text" id="edit-name" required style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem;">Опис:</label>
+                    <textarea id="edit-description" rows="3" style="width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: inherit;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Зберегти</button>
+                    <button type="button" class="btn btn-danger" onclick="deleteDepartment()" style="flex: 1;">Видалити</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()" style="flex: 1;">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:8003';
+
+        // Check auth
+        const token = localStorage.getItem('token');
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Check admin
+        if (currentUser.role !== 'ADMIN') {
+            alert('Доступ заборонено. Тільки для адміністраторів.');
+            window.location.href = 'dashboard.html';
+        }
+
+        document.getElementById('user-email').textContent = currentUser.email;
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+        }
+
+        // Load departments and their user counts
+        async function loadDepartments() {
+            try {
+                const [deptsResponse, usersResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/departments`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_BASE_URL}/admin/users`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+
+                if (!deptsResponse.ok) throw new Error('Failed to load departments');
+                if (!usersResponse.ok) throw new Error('Failed to load users');
+
+                const departments = await deptsResponse.json();
+                const users = await usersResponse.json();
+
+                // Count users per department
+                const userCounts = {};
+                users.forEach(user => {
+                    if (user.department_id) {
+                        userCounts[user.department_id] = (userCounts[user.department_id] || 0) + 1;
+                    }
+                });
+
+                renderDepartmentsTable(departments, userCounts);
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        function renderDepartmentsTable(departments, userCounts) {
+            const tbody = document.getElementById('departments-table-body');
+
+            if (departments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 2rem; text-align: center;">Немає департаментів</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = departments.map(dept => `
+                <tr style="border-top: 1px solid var(--border);">
+                    <td style="padding: 1rem;">${dept.id}</td>
+                    <td style="padding: 1rem;"><strong>${dept.name}</strong></td>
+                    <td style="padding: 1rem; max-width: 300px;">${dept.description || '-'}</td>
+                    <td style="padding: 1rem;">${userCounts[dept.id] || 0}</td>
+                    <td style="padding: 1rem;">
+                        <button class="btn btn-sm btn-primary" onclick='openEditModal(${JSON.stringify(dept)})'>
+                            Редагувати
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Create modal
+        function openCreateModal() {
+            document.getElementById('create-name').value = '';
+            document.getElementById('create-description').value = '';
+            document.getElementById('create-modal').style.display = 'flex';
+        }
+
+        function closeCreateModal() {
+            document.getElementById('create-modal').style.display = 'none';
+        }
+
+        document.getElementById('create-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                name: document.getElementById('create-name').value,
+                description: document.getElementById('create-description').value || null,
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/departments`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create department');
+                }
+
+                alert('Департамент створено!');
+                closeCreateModal();
+                loadDepartments();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        });
+
+        // Edit modal
+        function openEditModal(dept) {
+            document.getElementById('edit-dept-id').value = dept.id;
+            document.getElementById('edit-name').value = dept.name;
+            document.getElementById('edit-description').value = dept.description || '';
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        document.getElementById('edit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const deptId = document.getElementById('edit-dept-id').value;
+            const data = {
+                name: document.getElementById('edit-name').value,
+                description: document.getElementById('edit-description').value || null,
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/departments/${deptId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to update department');
+                }
+
+                alert('Департамент оновлено!');
+                closeEditModal();
+                loadDepartments();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        });
+
+        async function deleteDepartment() {
+            const deptId = document.getElementById('edit-dept-id').value;
+
+            if (!confirm('Ви впевнені, що хочете видалити цей департамент? Це можливо тільки якщо в ньому немає співробітників.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/departments/${deptId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to delete department');
+                }
+
+                alert('Департамент видалено!');
+                closeEditModal();
+                loadDepartments();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        // Initial load
+        loadDepartments();
+    </script>
+
+    <style>
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--dark);
+            padding: 2rem;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+        }
+    </style>
+</body>
+</html>

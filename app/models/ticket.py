@@ -51,6 +51,12 @@ class Ticket(Base):
     # === Додаткові поля ===
     labels = Column(String(500), nullable=True)  # JSON array або comma-separated
 
+    # === Поля для підтвердження автоматичного призначення ===
+    auto_assigned = Column(Boolean, default=False, nullable=True)  # Чи було призначено автоматично
+    assignment_confirmed = Column(Boolean, nullable=True)  # True = підтверджено, False = відхилено, None = очікує
+    assignment_confirmed_at = Column(DateTime, nullable=True)  # Коли підтверджено/відхилено
+    assignment_feedback = Column(Text, nullable=True)  # Коментар спеціаліста
+
     # === Метадані ===
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

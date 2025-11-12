@@ -104,12 +104,12 @@ def test_learning_system():
             )
 
             if recommended:
-                print(f"  ✓ Рекомендовано: {recommended.full_name}")
+                print(f"  [+] Рекомендовано: {recommended.full_name}")
                 if recommended.specialty:
-                    print(f"    Спеціалізація: {recommended.specialty}")
+                    print(f"      Спеціалізація: {recommended.specialty}")
             else:
-                print("  ✗ Не знайдено відповідного спеціаліста")
-                print("    (Можливо немає історії вирішених тікетів)")
+                print("  [-] Не знайдено відповідного спеціаліста")
+                print("      (Можливо немає історії вирішених тікетів)")
 
             print()
 
