@@ -132,9 +132,12 @@ def _fallback_routing(title: str, description: str) -> Dict[str, Any]:
 
     auto_assign = priority != "P1"
 
+    priority_confidence = 0.6
+
     return {
         "category": category,
         "priority": priority,
+        "priority_confidence": priority_confidence,
         "urgency": urgency,
         "team": team,
         "assignee": None,
@@ -177,6 +180,7 @@ def route_with_llm(title: str, description: str) -> Dict[str, Any]:
         return {
             "category": "Other",
             "priority": "P3",
+            "priority_confidence": 0.5,
             "urgency": "LOW",
             "team": "ServiceDesk_L1",
             "assignee": None,
@@ -193,9 +197,14 @@ def route_with_llm(title: str, description: str) -> Dict[str, Any]:
     auto_assign = bool(parsed.get("auto_assign", False))
     reasoning = parsed.get("reasoning", raw)
 
+    priority_confidence = parsed.get("priority_confidence")
+    if priority_confidence is None:
+        priority_confidence = 0.7
+
     return {
         "category": category,
         "priority": priority,
+        "priority_confidence": priority_confidence,
         "urgency": urgency,
         "team": team,
         "assignee": assignee,

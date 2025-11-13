@@ -162,6 +162,7 @@ class TicketService:
     def update_ticket(
         ticket_id: int,
         ticket_data: TicketUpdate,
+        actor: User,
         db: Session,
     ) -> Ticket:
         """
@@ -181,11 +182,46 @@ class TicketService:
 
         # Оновлюємо тільки передані поля
         update_data = ticket_data.dict(exclude_unset=True)
+
+        priority_reason = update_data.pop("priority_manual_reason", None)
+        new_priority = update_data.get("priority_manual")
+        priority_changed = False
+        previous_priority = ticket.priority_manual
+
+        if "priority_manual" in update_data:
+            if new_priority is None:
+                raise HTTPException(status_code=422, detail="priority_manual cannot be null")
+            if new_priority != ticket.priority_manual:
+                priority_changed = True
+                if not priority_reason or not priority_reason.strip():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Please provide a reason when overriding the priority",
+                    )
+
         for field, value in update_data.items():
             setattr(ticket, field, value)
 
         ticket.updated_at = datetime.utcnow()
+
+        if priority_changed:
+            TicketService._record_priority_feedback(
+                db=db,
+                ticket=ticket,
+                actor=actor,
+                previous_priority=previous_priority,
+                new_priority=new_priority,
+                reason=priority_reason,
+            )
+
         db.commit()
+
+        if priority_changed:
+            try:
+                training_feedback_service.export_priority_feedback_dataset(db)
+            except Exception as exc:
+                print(f"[TRAINING_FEEDBACK] Failed to export dataset: {exc}")
+
         db.refresh(ticket)
 
         return ticket
@@ -197,6 +233,7 @@ class TicketService:
         category_final: CategoryEnum,
         lead: User,
         db: Session,
+        priority_change_reason: Optional[str] = None,
     ) -> Ticket:
         """
         LEAD вирішує тріаж: підтверджує або змінює ML рекомендації.
@@ -218,6 +255,8 @@ class TicketService:
         if not ticket.triage_required:
             raise HTTPException(status_code=400, detail="Ticket does not require triage")
 
+        previous_priority = ticket.priority_manual
+
         # Застосовуємо рішення LEAD
         ticket.priority_manual = priority_final
         ticket.category = category_final
@@ -231,10 +270,78 @@ class TicketService:
         ticket.status = StatusEnum.NEW
 
         ticket.updated_at = datetime.utcnow()
+
+        if priority_final == previous_priority:
+            reason_to_store = priority_change_reason or "TRIAGE_CONFIRMED"
+        else:
+            if not priority_change_reason or not priority_change_reason.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="Please explain why the priority differs from the previous value",
+                )
+            reason_to_store = priority_change_reason
+
+        TicketService._record_priority_feedback(
+            db=db,
+            ticket=ticket,
+            actor=lead,
+            previous_priority=previous_priority,
+            new_priority=priority_final,
+            reason=reason_to_store,
+        )
+
         db.commit()
+        try:
+            training_feedback_service.export_priority_feedback_dataset(db)
+        except Exception as exc:
+            print(f"[TRAINING_FEEDBACK] Failed to export dataset: {exc}")
         db.refresh(ticket)
 
         return ticket
+
+    @staticmethod
+    def _record_priority_feedback(
+        db: Session,
+        ticket: Ticket,
+        actor: User,
+        previous_priority: Optional[PriorityEnum],
+        new_priority: PriorityEnum,
+        reason: Optional[str],
+    ) -> None:
+        log_entry = (
+            db.query(MLPredictionLog)
+            .filter(MLPredictionLog.ticket_id == ticket.id)
+            .order_by(MLPredictionLog.created_at.desc())
+            .first()
+        )
+
+        if not log_entry:
+            log_entry = MLPredictionLog(
+                ticket_id=ticket.id,
+                model_version=ticket.ml_model_version or "unknown",
+                priority_predicted=ticket.priority_ml_suggested,
+                priority_confidence=ticket.priority_ml_confidence,
+                category_predicted=ticket.category_ml_suggested,
+                category_confidence=ticket.category_ml_confidence,
+                triage_reason=ticket.triage_reason,
+            )
+            db.add(log_entry)
+
+        log_entry.priority_final = new_priority
+        log_entry.category_final = ticket.category
+        log_entry.priority_feedback_previous = previous_priority
+        log_entry.priority_feedback_reason = reason
+        log_entry.priority_feedback_author_id = actor.id if actor else None
+        log_entry.priority_feedback_recorded_at = datetime.utcnow()
+
+        if ticket.priority_ml_suggested and not log_entry.priority_predicted:
+            log_entry.priority_predicted = ticket.priority_ml_suggested
+            log_entry.priority_confidence = ticket.priority_ml_confidence
+        if ticket.category_ml_suggested and not log_entry.category_predicted:
+            log_entry.category_predicted = ticket.category_ml_suggested
+            log_entry.category_confidence = ticket.category_ml_confidence
+
+        db.flush()
 
     @staticmethod
     def claim_ticket(

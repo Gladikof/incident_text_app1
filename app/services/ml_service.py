@@ -2,7 +2,7 @@
 ML Service - інтеграція існуючих ML моделей з новою базою даних.
 Відповідає за виклик ML/LLM пайплайну та логування результатів.
 """
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -51,6 +51,8 @@ class MLService:
                 "ml_enabled": False,
                 "priority_ml_suggested": None,
                 "priority_ml_confidence": None,
+                "priority_llm_suggested": None,
+                "priority_llm_confidence": None,
                 "category_ml_suggested": None,
                 "category_ml_confidence": None,
                 "triage_required": True,
@@ -62,17 +64,30 @@ class MLService:
         llm_result = None
         category_ml = None
         category_conf = None
+        priority_llm = None
+        priority_llm_confidence = None
 
         try:
             llm_result = route_with_llm(title, description)
             # llm_result містить: category, priority, urgency, team, assignee
             category_ml = MLService._map_category(llm_result.get("category"))
-            # Припускаємо, що LLM має високу впевненість (0.8)
             category_conf = 0.8
+
+            priority_llm = MLService._map_priority(llm_result.get("priority"))
+            priority_llm_confidence_raw = llm_result.get("priority_confidence")
+            if priority_llm_confidence_raw is not None:
+                try:
+                    priority_llm_confidence = float(priority_llm_confidence_raw)
+                except (TypeError, ValueError):
+                    priority_llm_confidence = 0.75
+            else:
+                priority_llm_confidence = 0.75
         except Exception as e:
             print(f"[ML] LLM routing error: {e}")
             category_ml = None
             category_conf = None
+            priority_llm = None
+            priority_llm_confidence = None
 
         # 2. ML модель для пріоритету
         priority_ml = None
@@ -96,7 +111,23 @@ class MLService:
         triage_required = False
         triage_reason = None
 
-        if priority_conf is not None and priority_conf < settings.ml_conf_threshold_priority:
+        mismatch_detected = (
+            priority_ml is not None
+            and priority_llm is not None
+            and priority_ml != priority_llm
+        )
+
+        both_confidences_low = (
+            priority_conf is not None
+            and priority_conf < settings.ml_conf_threshold_priority
+            and priority_llm_confidence is not None
+            and priority_llm_confidence < settings.ml_conf_threshold_priority
+        )
+
+        if mismatch_detected or both_confidences_low:
+            triage_required = True
+            triage_reason = TriageReasonEnum.LLM_PRIORITY_MISMATCH
+        elif priority_conf is not None and priority_conf < settings.ml_conf_threshold_priority:
             triage_required = True
             triage_reason = TriageReasonEnum.LOW_PRIORITY_CONF
         elif category_conf is not None and category_conf < settings.ml_conf_threshold_category:
@@ -110,10 +141,13 @@ class MLService:
                 model_version=ml_model_version or "unknown",
                 priority_predicted=priority_ml,
                 priority_confidence=priority_conf,
+                priority_llm_predicted=priority_llm,
+                priority_llm_confidence=priority_llm_confidence,
                 category_predicted=category_ml,
                 category_confidence=category_conf,
                 input_text=f"{title}\n{description}",
                 notes=str(llm_result) if llm_result else None,
+                triage_reason=triage_reason,
             )
             db.add(log_entry)
             db.commit()
@@ -122,6 +156,8 @@ class MLService:
             "ml_enabled": True,
             "priority_ml_suggested": priority_ml,
             "priority_ml_confidence": priority_conf,
+            "priority_llm_suggested": priority_llm,
+            "priority_llm_confidence": priority_llm_confidence,
             "category_ml_suggested": category_ml,
             "category_ml_confidence": category_conf,
             "triage_required": triage_required,
@@ -143,14 +179,22 @@ class MLService:
         return settings
 
     @staticmethod
-    def _map_priority(ml_label: str) -> Optional[PriorityEnum]:
+    def _map_priority(ml_label: Optional[str]) -> Optional[PriorityEnum]:
         """Маппінг ML labels (high/medium/low) -> PriorityEnum (P1/P2/P3)."""
-        mapping = {
-            "high": PriorityEnum.P1,
-            "medium": PriorityEnum.P2,
-            "low": PriorityEnum.P3,
-        }
-        return mapping.get(ml_label.lower())
+        if not ml_label:
+            return None
+
+        label = ml_label.strip()
+
+        try:
+            return PriorityEnum(label.upper())
+        except ValueError:
+            mapping = {
+                "high": PriorityEnum.P1,
+                "medium": PriorityEnum.P2,
+                "low": PriorityEnum.P3,
+            }
+            return mapping.get(label.lower())
 
     @staticmethod
     def _map_category(llm_category: Optional[str]) -> Optional[CategoryEnum]:

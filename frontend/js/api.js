@@ -114,14 +114,28 @@ class ApiClient {
         });
     }
 
-    async resolveTriage(id, priorityFinal, categoryFinal) {
+    async resolveTriage(id, priorityFinal, categoryFinal, reason = null) {
+        const payload = {
+            priority_final: priorityFinal,
+            category_final: categoryFinal,
+        };
+
+        if (reason) {
+            payload.priority_change_reason = reason;
+        }
+
         return this.request(`/tickets/${id}/triage/resolve`, {
             method: 'PATCH',
-            body: JSON.stringify({
-                priority_final: priorityFinal,
-                category_final: categoryFinal
-            }),
+            body: JSON.stringify(payload),
         });
+    }
+
+    async getMlLogs({ limit = 50, offset = 0, ticketId = null } = {}) {
+        const params = new URLSearchParams({ limit, offset });
+        if (ticketId) {
+            params.append('ticket_id', ticketId);
+        }
+        return this.request(`/ml/logs?${params.toString()}`);
     }
 
     // Departments

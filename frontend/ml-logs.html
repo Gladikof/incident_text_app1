@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Logs - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li><a href="ml-logs.html" class="nav-link active">ML Logs</a></li>
+            <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
+            <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
+            <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 1.5rem;">ML / LLM Logs</h1>
+
+        <div class="alert alert-info" style="margin-bottom: 1.5rem;">
+            <strong>Навчальна вибірка:</strong> кожна ручна зміна пріоритету автоматично потрапляє до
+            <code>training/data/priority_feedback.csv</code>. Аналітики можуть завантажити цей файл для
+            повторного тренування ML та актуалізації підказок LLM.
+        </div>
+
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2 style="margin-bottom: 1rem;">Фільтри</h2>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                <div>
+                    <label for="filter-ticket-id" class="form-label">Ticket ID</label>
+                    <input type="number" id="filter-ticket-id" class="form-input" placeholder="Наприклад, 42">
+                </div>
+                <div>
+                    <label for="filter-limit" class="form-label">Limit</label>
+                    <input type="number" id="filter-limit" class="form-input" value="50" min="1" max="500">
+                </div>
+                <button id="apply-filters" class="btn btn-primary">🔄 Оновити</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2 style="margin-bottom: 1rem;">Статистика</h2>
+            <div id="logs-stats">Завантаження...</div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Останні записи</h2>
+                <span id="logs-count" class="badge badge-status">0 записів</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ticket</th>
+                            <th>ML ➜ LLM ➜ Final</th>
+                            <th>Впевненість</th>
+                            <th>Причина</th>
+                            <th>Автор</th>
+                            <th>Створено</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table">
+                        <tr><td colspan="7" style="text-align: center;">Завантаження...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.v2.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script>
+        let currentUser = null;
+
+        async function loadCurrentUser() {
+            currentUser = await api.getMe();
+            document.getElementById('user-name').textContent = currentUser.email;
+            if (currentUser.role === 'ADMIN') {
+                document.getElementById('admin-nav-users').style.display = 'block';
+                document.getElementById('admin-nav-departments').style.display = 'block';
+            }
+        }
+
+        function formatPriority(p) {
+            return p ? `<span class="badge badge-priority">${p}</span>` : '<span class="badge badge-muted">—</span>';
+        }
+
+        function formatConfidence(ml, llm) {
+            const mlText = ml !== null && ml !== undefined ? (ml * 100).toFixed(0) + '%' : '—';
+            const llmText = llm !== null && llm !== undefined ? (llm * 100).toFixed(0) + '%' : '—';
+            return `<div>ML: ${mlText}</div><div>LLM: ${llmText}</div>`;
+        }
+
+        function renderStats(logs) {
+            if (!logs.length) {
+                document.getElementById('logs-stats').innerHTML = '<p>Записів не знайдено.</p>';
+                return;
+            }
+
+            const manualOverrides = logs.filter(log => log.priority_feedback_reason);
+            const mismatchCount = logs.filter(log => log.triage_reason === 'LLM_PRIORITY_MISMATCH');
+            const latestFeedback = manualOverrides[0]?.priority_feedback_recorded_at;
+
+            const cardStyle = 'background: var(--dark-lighter); border-radius: 12px; padding: 1rem;';
+            const valueStyle = 'font-size: 2rem; font-weight: 700;';
+            const labelStyle = 'color: var(--gray); margin-top: 0.25rem; font-size: 0.9rem;';
+
+            document.getElementById('logs-stats').innerHTML = `
+                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}">${logs.length}</div>
+                        <div style="${labelStyle}">Записів у вибірці</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}">${manualOverrides.length}</div>
+                        <div style="${labelStyle}">Ручних корекцій</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}">${mismatchCount.length}</div>
+                        <div style="${labelStyle}">LLM vs ML розбіжностей</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}">${latestFeedback ? new Date(latestFeedback).toLocaleString() : '—'}</div>
+                        <div style="${labelStyle}">Останній фідбек</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadLogs() {
+            const limit = parseInt(document.getElementById('filter-limit').value, 10) || 50;
+            const ticketIdValue = document.getElementById('filter-ticket-id').value;
+            const ticketId = ticketIdValue ? parseInt(ticketIdValue, 10) : null;
+
+            const tableBody = document.getElementById('logs-table');
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Завантаження...</td></tr>';
+
+            try {
+                const logs = await api.getMlLogs({ limit, ticketId });
+                document.getElementById('logs-count').textContent = `${logs.length} записів`;
+                renderStats(logs);
+
+                if (!logs.length) {
+                    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Записів не знайдено.</td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = logs.map(log => {
+                    const ticketLink = `<a href="tickets.html#ticket-${log.ticket_id}">INC-${String(log.ticket_id).padStart(4, '0')}</a>`;
+                    const summary = `${formatPriority(log.priority_predicted)} ➜ ${formatPriority(log.priority_llm_predicted)} ➜ ${formatPriority(log.priority_final)}`;
+                    const reason = log.priority_feedback_reason ? `<div>${log.priority_feedback_reason}</div>` : '<span class="badge badge-muted">—</span>';
+                    const author = log.priority_feedback_author ? log.priority_feedback_author.email : '—';
+                    const created = new Date(log.created_at).toLocaleString();
+
+                    return `
+                        <tr>
+                            <td>${log.id}</td>
+                            <td>
+                                ${ticketLink}
+                                <div style="font-size: 0.8rem; color: var(--gray);">${log.ticket_title || ''}</div>
+                            </td>
+                            <td>${summary}</td>
+                            <td>${formatConfidence(log.priority_confidence, log.priority_llm_confidence)}</td>
+                            <td>${reason}</td>
+                            <td>${author}</td>
+                            <td>${created}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger);">Помилка завантаження: ${error.message}</td></tr>`;
+                document.getElementById('logs-count').textContent = '0 записів';
+                document.getElementById('logs-stats').innerHTML = '<p style="color: var(--danger);">Не вдалося завантажити дані.</p>';
+            }
+        }
+
+        document.getElementById('apply-filters').addEventListener('click', loadLogs);
+        document.getElementById('logout-btn').addEventListener('click', (event) => {
+            event.preventDefault();
+            api.logout();
+            window.location.href = 'login.html';
+        });
+
+        (async function init() {
+            try {
+                await loadCurrentUser();
+                await loadLogs();
+            } catch (error) {
+                console.error('ML log page init failed:', error);
+            }
+        })();
+    </script>
+</body>
+</html>

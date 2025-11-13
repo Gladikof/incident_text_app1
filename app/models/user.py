@@ -42,6 +42,11 @@ class User(Base):
     assigned_tickets = relationship("Ticket", foreign_keys="Ticket.assigned_to_user_id", back_populates="assigned_to")
     owned_assets = relationship("Asset", back_populates="owner")
     comments = relationship("TicketComment", back_populates="author")
+    ml_feedback_logs = relationship(
+        "MLPredictionLog",
+        back_populates="feedback_author",
+        foreign_keys="MLPredictionLog.priority_feedback_author_id",
+    )
 
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"
