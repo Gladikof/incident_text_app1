@@ -42,12 +42,13 @@ app.add_middleware(
 )
 
 # === Routers ===
-from app.routers import tickets, departments, users
+from app.routers import tickets, departments, users, ml_logs
 
 app.include_router(auth.router)
 app.include_router(tickets.router)
 app.include_router(departments.router)
 app.include_router(users.router)
+app.include_router(ml_logs.router)
 
 
 @app.on_event("startup")

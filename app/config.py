@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
     ARTIFACTS_DIR: Path = BASE_DIR / "artifacts"
     FRONTEND_DIR: Path = BASE_DIR / "frontend"
+    TRAINING_DATA_DIR: Path = BASE_DIR / "training" / "data"
 
     class Config:
         env_file = ".env"
