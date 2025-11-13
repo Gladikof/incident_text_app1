@@ -63,11 +63,6 @@ class TicketUpdate(BaseModel):
     status: Optional[StatusEnum] = None
     category: Optional[CategoryEnum] = None
     priority_manual: Optional[PriorityEnum] = None
-    priority_manual_reason: Optional[str] = Field(
-        None,
-        description="Пояснення, чому вручну змінено пріоритет",
-        min_length=3,
-    )
     labels: Optional[str] = None
 
 
@@ -88,13 +83,8 @@ class TicketAssignMultiple(BaseModel):
 
 class TicketTriageResolve(BaseModel):
     """Розв'язання тріажу (LEAD)"""
-    category_final: CategoryEnum
-    priority_final: PriorityEnum
-    priority_change_reason: Optional[str] = Field(
-        None,
-        description="Пояснення від LEAD щодо ручного рішення по пріоритету",
-        min_length=3,
-    )
+    category: CategoryEnum
+    priority_manual: PriorityEnum
     assigned_to_user_id: Optional[int] = None
 
 

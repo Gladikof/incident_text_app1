@@ -200,7 +200,6 @@ def update_ticket(
     ticket_service.update_ticket(
         ticket_id=ticket_id,
         ticket_data=ticket_data,
-        actor=current_user,
         db=db,
     )
     # Reload with relationships
@@ -343,7 +342,6 @@ def resolve_triage(
         ticket_id=ticket_id,
         priority_final=triage_data.priority_final,
         category_final=triage_data.category_final,
-        priority_change_reason=triage_data.priority_change_reason,
         lead=current_user,
         db=db,
     )

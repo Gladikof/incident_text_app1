@@ -17,7 +17,6 @@ from app.schemas.ticket import (
 )
 from app.schemas.comment import CommentOut, CommentCreate
 from app.schemas.settings import SystemSettingsOut, SystemSettingsUpdate
-from app.schemas.ml import MLPredictionLogOut
 
 __all__ = [
     "UserOut",
@@ -40,7 +39,6 @@ __all__ = [
     "TicketTriageResolve",
     "TicketListItem",
     "MLBadge",
-    "MLPredictionLogOut",
     "CommentOut",
     "CommentCreate",
     "SystemSettingsOut",

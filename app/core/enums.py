@@ -43,7 +43,6 @@ class TriageReasonEnum(str, enum.Enum):
     LOW_CATEGORY_CONF = "LOW_CATEGORY_CONF"
     ML_DISABLED = "ML_DISABLED"
     MANUAL_FLAG = "MANUAL_FLAG"
-    LLM_PRIORITY_MISMATCH = "LLM_PRIORITY_MISMATCH"
 
 
 class MLModeEnum(str, enum.Enum):

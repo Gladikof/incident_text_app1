@@ -296,7 +296,7 @@
 
             const priorityOptions = ['P1', 'P2', 'P3'];
             const priorityDropdown = `
-                        <select id="priority-change" class="form-input" style="width: auto; display: inline-block; margin-right: 0.5rem;" data-current-priority="${ticket.priority_manual}">
+                <select id="priority-change" class="form-input" style="width: auto; display: inline-block; margin-right: 0.5rem;">
                     ${priorityOptions.map(p => `<option value="${p}" ${p === ticket.priority_manual ? 'selected' : ''}>${p}</option>`).join('')}
                 </select>
                 <button onclick="updatePriority(${ticket.id})" class="btn" style="background: var(--primary);">
@@ -466,25 +466,9 @@
         }
 
         async function updatePriority(ticketId) {
-            const prioritySelect = document.getElementById('priority-change');
-            const newPriority = prioritySelect.value;
-            const currentPriority = prioritySelect.dataset.currentPriority;
-            if (newPriority === currentPriority) {
-                alert('Пріоритет не змінився.');
-                return;
-            }
-
-            const reason = prompt('Поясніть причину зміни пріоритету:', '');
-            if (!reason || reason.trim().length < 3) {
-                alert('Пояснення обов\'язкове і має містити щонайменше 3 символи.');
-                return;
-            }
-
+            const newPriority = document.getElementById('priority-change').value;
             try {
-                await api.updateTicket(ticketId, {
-                    priority_manual: newPriority,
-                    priority_manual_reason: reason.trim(),
-                });
+                await api.updateTicket(ticketId, { priority_manual: newPriority });
                 alert('Пріоритет оновлено!');
                 await openTicketModal(ticketId); // Reload modal
                 loadTickets(); // Reload list
