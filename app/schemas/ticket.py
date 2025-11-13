@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from app.core.enums import StatusEnum, PriorityEnum, CategoryEnum, TriageReasonEnum
+from app.core.enums import StatusEnum, PriorityEnum, CategoryEnum, TriageReasonEnum, RoleEnum
 
 
 class MLBadge(BaseModel):
@@ -17,6 +17,28 @@ class MLBadge(BaseModel):
     category_confidence: Optional[float] = None
     model_version: Optional[str] = None
     tooltip: Optional[str] = None
+
+
+class UserBrief(BaseModel):
+    """Коротка інформація про користувача для вкладення в тікет"""
+    id: int
+    email: str
+    full_name: Optional[str] = None
+    role: RoleEnum
+    department_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DepartmentBrief(BaseModel):
+    """Коротка інформація про департамент для вкладення в тікет"""
+    id: int
+    name: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class TicketBase(BaseModel):
@@ -50,8 +72,13 @@ class TicketStatusUpdate(BaseModel):
 
 
 class TicketAssign(BaseModel):
-    """Призначення виконавця"""
+    """Призначення виконавця (single)"""
     assigned_to_user_id: Optional[int] = None
+
+
+class TicketAssignMultiple(BaseModel):
+    """Призначення множинних виконавців"""
+    assignee_ids: List[int] = Field(..., min_items=1)
 
 
 class TicketTriageResolve(BaseModel):
@@ -121,11 +148,17 @@ class TicketOut(TicketBase):
     triage_reason: Optional[TriageReasonEnum] = None
     self_assign_locked: bool
 
-    # Relations
+    # Relations - IDs
     created_by_user_id: int
     assigned_to_user_id: Optional[int] = None
     department_id: Optional[int] = None
     asset_id: Optional[int] = None
+
+    # Relations - Objects
+    created_by: Optional[UserBrief] = None
+    assigned_to: Optional[UserBrief] = None
+    assignees: List[UserBrief] = []  # Multiple assignees
+    department: Optional[DepartmentBrief] = None
 
     # Timestamps
     created_at: datetime

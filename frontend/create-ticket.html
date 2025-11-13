@@ -100,7 +100,7 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.v2.js"></script>
     <script src="js/auth-guard.js"></script>
     <script>
         const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -115,7 +115,7 @@
         // Load departments
         async function loadDepartments() {
             try {
-                const response = await fetch('http://127.0.0.1:8003/departments', {
+                const response = await fetch('http://127.0.0.1:8000/departments', {
                     headers: {
                         'Authorization': `Bearer ${api.token}`
                     }

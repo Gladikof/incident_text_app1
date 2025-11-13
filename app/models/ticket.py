@@ -2,11 +2,21 @@
 Ticket model з ML полями
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, Float, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Text, Boolean, Float, DateTime, ForeignKey, Enum as SQLEnum, Table
 from sqlalchemy.orm import relationship
 
 from app.database import Base
 from app.core.enums import StatusEnum, PriorityEnum, CategoryEnum, TriageReasonEnum
+
+
+# Association table for many-to-many ticket-assignees relationship
+ticket_assignees_table = Table(
+    'ticket_assignees',
+    Base.metadata,
+    Column('ticket_id', Integer, ForeignKey('tickets.id', ondelete='CASCADE'), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    Column('assigned_at', DateTime, default=datetime.utcnow, nullable=False)
+)
 
 
 class Ticket(Base):
@@ -70,6 +80,13 @@ class Ticket(Base):
     asset = relationship("Asset", back_populates="tickets")
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
     ml_logs = relationship("MLPredictionLog", back_populates="ticket", cascade="all, delete-orphan")
+
+    # Many-to-many relationship for multiple assignees
+    assignees = relationship(
+        "User",
+        secondary=ticket_assignees_table,
+        backref="tickets_assigned_many"
+    )
 
     def __repr__(self):
         return f"<Ticket #{self.id}: {self.title[:50]} ({self.status})>"

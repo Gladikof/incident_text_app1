@@ -108,10 +108,9 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.v2.js"></script>
     <script src="js/auth-guard.js"></script>
     <script>
-        const API_BASE_URL = 'http://127.0.0.1:8003';
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const currentUser = user; // Alias for consistency
         document.getElementById('user-name').textContent = user.email || 'User';
@@ -371,7 +370,11 @@
                             <strong>Департамент:</strong> ${ticket.department ? ticket.department.name : 'N/A'}
                         </div>
                         <div>
-                            <strong>Виконавець:</strong> ${ticket.assigned_to ? ticket.assigned_to.email : 'Не призначено'}
+                            <strong>Виконавці:</strong>
+                            ${ticket.assignees && ticket.assignees.length > 0
+                                ? ticket.assignees.map(a => a.email || a.full_name).join(', ')
+                                : (ticket.assigned_to ? ticket.assigned_to.email : 'Не призначено')
+                            }
                             ${ticket.auto_assigned && ticket.assignment_confirmed === null ?
                                 '<span style="color: var(--warning); margin-left: 0.5rem;">(автоматично, очікує підтвердження)</span>' : ''}
                             ${ticket.auto_assigned && ticket.assignment_confirmed === true ?
@@ -382,9 +385,9 @@
                     </div>
 
                     <!-- Manual Assignment (for LEAD/ADMIN) -->
-                    ${(currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') && !ticket.assigned_to ? `
+                    ${(currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') ? `
                         <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
-                            <h4 style="margin: 0 0 1rem 0; font-weight: 600;">👤 Призначити виконавця</h4>
+                            <h4 style="margin: 0 0 1rem 0; font-weight: 600;">👥 Призначити виконавців</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
                                 <div>
                                     <label class="form-label" style="display: block; margin-bottom: 0.5rem;">1. Оберіть департамент:</label>
@@ -393,14 +396,15 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="form-label" style="display: block; margin-bottom: 0.5rem;">2. Оберіть спеціаліста:</label>
-                                    <select id="assignee-select-${ticket.id}" class="form-input" style="width: 100%;" disabled>
+                                    <label class="form-label" style="display: block; margin-bottom: 0.5rem;">2. Оберіть спеціалістів (можна декілька):</label>
+                                    <select id="assignee-select-${ticket.id}" class="form-input" style="width: 100%; min-height: 80px;" multiple disabled>
                                         <option value="">-- Спочатку оберіть департамент --</option>
                                     </select>
+                                    <small style="display: block; margin-top: 0.25rem; color: var(--gray-light);">Утримуйте Ctrl/Cmd для вибору декількох</small>
                                 </div>
                             </div>
-                            <button onclick="assignTicket(${ticket.id})" class="btn btn-primary" style="width: 100%;">
-                                Призначити
+                            <button onclick="assignMultipleAssignees(${ticket.id})" class="btn btn-primary" style="width: 100%;">
+                                Призначити виконавців
                             </button>
                         </div>
                     ` : ''}
@@ -433,7 +437,7 @@
             document.getElementById('modal-body').innerHTML = modalContent;
 
             // Load departments list for assignment dropdown (if visible)
-            if ((currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') && !ticket.assigned_to) {
+            if (currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') {
                 loadDepartmentsForAssignment(ticket.id);
             }
         }
@@ -474,20 +478,36 @@
         }
 
         async function loadDepartmentsForAssignment(ticketId) {
+            console.log('[DEBUG] loadDepartmentsForAssignment called for ticket:', ticketId);
+            console.log('[DEBUG] API_BASE_URL:', API_BASE_URL);
+            console.log('[DEBUG] Token exists:', !!localStorage.getItem('token'));
+
             try {
                 // Fetch all departments
-                const response = await fetch(`${API_BASE_URL}/departments`, {
+                const url = `${API_BASE_URL}/departments`;
+                console.log('[DEBUG] Fetching departments from:', url);
+
+                const response = await fetch(url, {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
                     }
                 });
 
-                if (!response.ok) throw new Error('Failed to load departments');
+                console.log('[DEBUG] Response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[DEBUG] Error response:', errorText);
+                    throw new Error('Failed to load departments: ' + response.status);
+                }
 
                 const departments = await response.json();
+                console.log('[DEBUG] Departments loaded:', departments.length, departments);
 
                 // Populate department dropdown
                 const deptSelect = document.getElementById(`department-select-${ticketId}`);
+                console.log('[DEBUG] Department select element:', deptSelect);
+
                 if (deptSelect) {
                     // Clear existing options except first
                     deptSelect.innerHTML = '<option value="">-- Оберіть департамент --</option>';
@@ -498,9 +518,11 @@
                         option.textContent = dept.name;
                         deptSelect.appendChild(option);
                     });
+
+                    console.log('[DEBUG] Department dropdown populated with', departments.length, 'departments');
                 }
             } catch (error) {
-                console.error('Failed to load departments:', error);
+                console.error('[ERROR] Failed to load departments:', error);
                 alert('Помилка завантаження департаментів: ' + error.message);
             }
         }
@@ -589,6 +611,62 @@
                 closeModal();
                 loadTickets(); // Reload list
             } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function assignMultipleAssignees(ticketId) {
+            const select = document.getElementById(`assignee-select-${ticketId}`);
+            const selectedOptions = Array.from(select.selectedOptions);
+            const assigneeIds = selectedOptions.map(opt => parseInt(opt.value)).filter(id => !isNaN(id));
+
+            console.log('[DEBUG] assignMultipleAssignees called for ticket:', ticketId);
+            console.log('[DEBUG] Selected assignee IDs:', assigneeIds);
+
+            if (assigneeIds.length === 0) {
+                alert('Будь ласка, оберіть хоча б одного спеціаліста');
+                return;
+            }
+
+            try {
+                const url = `${API_BASE_URL}/tickets/${ticketId}/assignees`;
+                console.log('[DEBUG] POST request to:', url);
+                console.log('[DEBUG] Request body:', { assignee_ids: assigneeIds });
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        assignee_ids: assigneeIds
+                    })
+                });
+
+                console.log('[DEBUG] Response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[DEBUG] Error response:', errorText);
+                    let errorDetail = 'Failed to assign ticket';
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        errorDetail = errorJson.detail || errorDetail;
+                    } catch (e) {
+                        errorDetail = errorText || errorDetail;
+                    }
+                    throw new Error(errorDetail);
+                }
+
+                const result = await response.json();
+                console.log('[DEBUG] Assignment successful:', result);
+
+                alert(`Тікет успішно призначено ${assigneeIds.length} виконавцям!`);
+                closeModal();
+                loadTickets(); // Reload list
+            } catch (error) {
+                console.error('[ERROR] Failed to assign:', error);
                 alert('Помилка: ' + error.message);
             }
         }

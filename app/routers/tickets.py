@@ -3,7 +3,7 @@ Tickets Router - API endpoints для роботи з тікетами.
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.core.deps import (
@@ -13,7 +13,7 @@ from app.core.deps import (
 )
 from app.core.enums import StatusEnum, PriorityEnum, CategoryEnum, RoleEnum
 from app.models.user import User
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, ticket_assignees_table
 from app.schemas.ticket import (
     TicketOut,
     TicketCreate,
@@ -21,6 +21,7 @@ from app.schemas.ticket import (
     TicketListItem,
     TicketStatusUpdate,
     TicketAssign,
+    TicketAssignMultiple,
     TicketTriageResolve,
 )
 from app.services.ticket_service import ticket_service
@@ -28,6 +29,21 @@ from app.services.ml_service import ml_service
 
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+
+def _load_ticket_relationships(db: Session, ticket_id: int) -> Ticket:
+    """Helper to load ticket with all relationships for TicketOut response"""
+    return (
+        db.query(Ticket)
+        .options(
+            joinedload(Ticket.created_by),
+            joinedload(Ticket.assigned_to),
+            joinedload(Ticket.assignees),
+            joinedload(Ticket.department)
+        )
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
 
 
 @router.post("", response_model=TicketOut, status_code=201)
@@ -53,7 +69,8 @@ def create_ticket(
         creator=current_user,
         db=db,
     )
-    return ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket.id)
 
 
 @router.get("", response_model=List[TicketListItem])
@@ -134,7 +151,16 @@ def get_ticket(
 
     Доступно: всім авторизованим користувачам (з перевіркою прав).
     """
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = (
+        db.query(Ticket)
+        .options(
+            joinedload(Ticket.created_by),
+            joinedload(Ticket.assigned_to),
+            joinedload(Ticket.department)
+        )
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
@@ -171,12 +197,13 @@ def update_ticket(
         if ticket.assigned_to_user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    updated_ticket = ticket_service.update_ticket(
+    ticket_service.update_ticket(
         ticket_id=ticket_id,
         ticket_data=ticket_data,
         db=db,
     )
-    return updated_ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket_id)
 
 
 @router.patch("/{ticket_id}/status", response_model=TicketOut)
@@ -200,12 +227,13 @@ def update_ticket_status(
         if ticket.assigned_to_user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    updated_ticket = ticket_service.update_status(
+    ticket_service.update_status(
         ticket_id=ticket_id,
         new_status=status_data.status,
         db=db,
     )
-    return updated_ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket_id)
 
 
 @router.post("/{ticket_id}/claim", response_model=TicketOut)
@@ -232,7 +260,8 @@ def claim_ticket(
         agent=current_user,
         db=db,
     )
-    return ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket.id)
 
 
 @router.patch("/{ticket_id}/assign", response_model=TicketOut)
@@ -252,7 +281,44 @@ def assign_ticket(
         assignee_id=assign_data.assigned_to_user_id,
         db=db,
     )
-    return ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket.id)
+
+
+@router.post("/{ticket_id}/assignees", response_model=TicketOut)
+def assign_multiple_assignees(
+    ticket_id: int,
+    assign_data: TicketAssignMultiple,
+    current_user: User = Depends(require_lead_or_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    LEAD/ADMIN призначає множинних виконавців до тікету.
+
+    Доступно: LEAD, ADMIN.
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Verify all users exist
+    users = db.query(User).filter(User.id.in_(assign_data.assignee_ids)).all()
+    if len(users) != len(assign_data.assignee_ids):
+        raise HTTPException(status_code=400, detail="One or more assignees not found")
+
+    # Clear previous assignees and set new ones
+    ticket.assignees = users
+
+    # Also update assigned_to_user_id to first assignee for backwards compatibility
+    if users:
+        ticket.assigned_to_user_id = users[0].id
+    else:
+        ticket.assigned_to_user_id = None
+
+    db.commit()
+
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket.id)
 
 
 @router.patch("/{ticket_id}/triage/resolve", response_model=TicketOut)
@@ -279,7 +345,8 @@ def resolve_triage(
         lead=current_user,
         db=db,
     )
-    return ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket.id)
 
 
 @router.post("/{ticket_id}/ml/recalculate", response_model=TicketOut)
@@ -320,9 +387,9 @@ def recalculate_ml(
     ticket.triage_reason = ml_result["triage_reason"]
 
     db.commit()
-    db.refresh(ticket)
 
-    return ticket
+    # Reload with relationships
+    return _load_ticket_relationships(db, ticket_id)
 
 
 @router.post("/{ticket_id}/assignment/confirm")
