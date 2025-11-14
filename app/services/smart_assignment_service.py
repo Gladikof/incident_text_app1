@@ -247,8 +247,10 @@ class SmartAssignmentService:
         """
         Рахує similarity між agent specialty і ticket text.
 
-        Проста реалізація: keyword matching.
-        Для production можна використати TF-IDF або embeddings.
+        Використовує покращений keyword matching з partial matching:
+        - Exact match: повний збіг ключового слова
+        - Partial match: часткове збіг (наприклад, "VPN" збігається з "OpenVPN")
+        - Weighted: точні збіги мають більшу вагу
 
         Returns:
             Score від 0 до 1
@@ -264,14 +266,33 @@ class SmartAssignmentService:
         # Розбиваємо specialty на keywords
         keywords = [kw.strip() for kw in specialty_lower.split(",")]
 
-        # Рахуємо скільки keywords є в ticket_text
-        matches = sum(1 for kw in keywords if kw in ticket_lower)
-
-        # Normalize: matches / total keywords
         if len(keywords) == 0:
             return 0.0
 
-        return min(matches / len(keywords), 1.0)
+        # Рахуємо exact matches та partial matches
+        exact_matches = 0
+        partial_matches = 0
+
+        for kw in keywords:
+            if not kw:  # Skip empty keywords
+                continue
+
+            # Exact match: ключове слово є окремим словом у тексті
+            # Використовуємо word boundaries для точності
+            if f" {kw} " in f" {ticket_lower} " or ticket_lower.startswith(kw + " ") or ticket_lower.endswith(" " + kw):
+                exact_matches += 1
+            # Partial match: ключове слово є частиною слова (substring)
+            elif kw in ticket_lower:
+                partial_matches += 1
+
+        # Weighted score: exact matches = 1.0, partial matches = 0.5
+        total_weight = exact_matches * 1.0 + partial_matches * 0.5
+        max_possible_weight = len(keywords) * 1.0
+
+        # Normalize
+        score = min(total_weight / max_possible_weight, 1.0)
+
+        return score
 
     @staticmethod
     def _calculate_workload_score(

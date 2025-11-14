@@ -71,14 +71,22 @@
                 <canvas id="accuracy-chart"></canvas>
             </div>
             <div class="card">
-                <h2>Precision by Priority</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">Precision by Priority</h2>
+                    <select id="precision-model-selector" class="form-input" style="width: auto; font-size: 0.85rem;">
+                        <option value="latest">Latest Model</option>
+                    </select>
+                </div>
                 <canvas id="precision-chart"></canvas>
             </div>
         </div>
 
         <!-- Models Table -->
         <div class="card" style="margin-bottom: 2rem;">
-            <h2>ML Models</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin: 0;">ML Models</h2>
+                <button class="btn btn-secondary btn-sm" onclick="exportModelsCSV()">📥 Export CSV</button>
+            </div>
             <table style="width: 100%; margin-top: 1rem;">
                 <thead>
                     <tr>
@@ -129,9 +137,8 @@
         </div>
     </div>
 
-    <script src="js/api.js"></script>
+    <script src="js/api.v2.js"></script>
     <script>
-        const API_BASE_URL = 'http://127.0.0.1:8000';
 
         // Check auth
         const token = localStorage.getItem('token');
@@ -177,6 +184,9 @@
         // Current filter
         let currentJobsFilter = 'ALL';
 
+        // Models data
+        let allModels = [];
+
         // Load all data
         async function loadData() {
             await Promise.all([
@@ -211,6 +221,7 @@
         async function loadModels() {
             try {
                 const models = await api.getModels(20);
+                allModels = models;
 
                 const tbody = document.getElementById('models-table-body');
 
@@ -224,6 +235,11 @@
                 if (activeModel) {
                     document.getElementById('active-model-version').textContent = activeModel.version;
                 }
+
+                // Populate model selector
+                const selector = document.getElementById('precision-model-selector');
+                selector.innerHTML = '<option value="latest">Latest Model</option>' +
+                    models.map(m => `<option value="${m.version}">${m.version.substring(0, 20)} (${m.accuracy ? (m.accuracy * 100).toFixed(1) + '%' : 'N/A'})</option>`).join('');
 
                 tbody.innerHTML = models.map(model => `
                     <tr style="background: ${model.is_active ? 'var(--primary-transparent)' : 'transparent'};">
@@ -303,8 +319,22 @@
                 }
             });
 
-            // Precision chart (latest model)
-            const latestModel = sortedModels[sortedModels.length - 1];
+            // Precision chart - load latest model
+            updatePrecisionChart('latest');
+        }
+
+        // Update precision chart for selected model
+        function updatePrecisionChart(version) {
+            const sortedModels = [...allModels].sort((a, b) =>
+                new Date(a.created_at) - new Date(b.created_at)
+            );
+
+            const selectedModel = version === 'latest'
+                ? sortedModels[sortedModels.length - 1]
+                : allModels.find(m => m.version === version);
+
+            if (!selectedModel) return;
+
             const precisionCtx = document.getElementById('precision-chart');
             if (precisionChart) precisionChart.destroy();
 
@@ -315,9 +345,9 @@
                     datasets: [{
                         label: 'Precision',
                         data: [
-                            latestModel.precision_p1 ? latestModel.precision_p1 * 100 : 0,
-                            latestModel.precision_p2 ? latestModel.precision_p2 * 100 : 0,
-                            latestModel.precision_p3 ? latestModel.precision_p3 * 100 : 0
+                            selectedModel.precision_p1 ? selectedModel.precision_p1 * 100 : 0,
+                            selectedModel.precision_p2 ? selectedModel.precision_p2 * 100 : 0,
+                            selectedModel.precision_p3 ? selectedModel.precision_p3 * 100 : 0
                         ],
                         backgroundColor: ['rgba(255, 99, 132, 0.5)', 'rgba(255, 206, 86, 0.5)', 'rgba(54, 162, 235, 0.5)'],
                         borderColor: ['rgba(255, 99, 132, 1)', 'rgba(255, 206, 86, 1)', 'rgba(54, 162, 235, 1)'],
@@ -325,9 +355,9 @@
                     }, {
                         label: 'Recall',
                         data: [
-                            latestModel.recall_p1 ? latestModel.recall_p1 * 100 : 0,
-                            latestModel.recall_p2 ? latestModel.recall_p2 * 100 : 0,
-                            latestModel.recall_p3 ? latestModel.recall_p3 * 100 : 0
+                            selectedModel.recall_p1 ? selectedModel.recall_p1 * 100 : 0,
+                            selectedModel.recall_p2 ? selectedModel.recall_p2 * 100 : 0,
+                            selectedModel.recall_p3 ? selectedModel.recall_p3 * 100 : 0
                         ],
                         backgroundColor: ['rgba(255, 99, 132, 0.2)', 'rgba(255, 206, 86, 0.2)', 'rgba(54, 162, 235, 0.2)'],
                         borderColor: ['rgba(255, 99, 132, 1)', 'rgba(255, 206, 86, 1)', 'rgba(54, 162, 235, 1)'],
@@ -342,7 +372,7 @@
                         },
                         title: {
                             display: true,
-                            text: `Model: ${latestModel.version}`,
+                            text: `${selectedModel.version} (Acc: ${selectedModel.accuracy ? (selectedModel.accuracy * 100).toFixed(1) : 'N/A'}%)`,
                             color: '#e0e0e0'
                         }
                     },
@@ -361,6 +391,11 @@
                 }
             });
         }
+
+        // Model selector change handler
+        document.getElementById('precision-model-selector').addEventListener('change', (e) => {
+            updatePrecisionChart(e.target.value);
+        });
 
         // Load jobs
         async function loadJobs(statusFilter = 'ALL') {
@@ -383,23 +418,31 @@
                         : 'Running...';
 
                     let statusBadge = '';
+                    let errorInfo = '';
                     if (job.status === 'COMPLETED') {
                         statusBadge = '<span class="badge badge-success">Completed</span>';
                     } else if (job.status === 'RUNNING') {
                         statusBadge = '<span class="badge badge-warning">Running</span>';
                     } else if (job.status === 'FAILED') {
                         statusBadge = '<span class="badge badge-danger">Failed</span>';
+                        if (job.error_message) {
+                            errorInfo = `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 0.25rem;">${job.error_message.substring(0, 60)}${job.error_message.length > 60 ? '...' : ''}</div>`;
+                        }
                     }
 
+                    const feedbackBadge = job.new_feedback_count
+                        ? `<span class="badge badge-primary" title="New feedback used">${job.new_feedback_count} new</span>`
+                        : '';
+
                     return `
-                        <tr>
+                        <tr style="${job.status === 'FAILED' ? 'background: rgba(244, 67, 54, 0.05);' : ''}">
                             <td>#${job.id}</td>
                             <td>${new Date(job.started_at).toLocaleString('uk-UA')}</td>
                             <td>${duration}</td>
                             <td><span class="badge badge-secondary">${job.training_type}</span></td>
                             <td style="font-family: monospace; font-size: 0.85rem;">${job.model_version || '-'}</td>
-                            <td>${job.total_training_samples || '-'}</td>
-                            <td>${statusBadge}</td>
+                            <td>${job.total_training_samples || '-'} ${feedbackBadge}</td>
+                            <td>${statusBadge}${errorInfo}</td>
                         </tr>
                     `;
                 }).join('');
@@ -505,6 +548,39 @@ Notes: ${model.notes || 'None'}
             } catch (error) {
                 alert(`Error: ${error.message}`);
             }
+        }
+
+        // Export models to CSV
+        function exportModelsCSV() {
+            if (!allModels || allModels.length === 0) {
+                alert('No models to export');
+                return;
+            }
+
+            const headers = ['Version', 'Created At', 'Accuracy', 'F1 Score', 'Precision P1', 'Precision P2', 'Precision P3', 'Recall P1', 'Recall P2', 'Recall P3', 'Training Samples', 'Is Active', 'Notes'];
+            const rows = allModels.map(m => [
+                m.version,
+                new Date(m.created_at).toISOString(),
+                m.accuracy !== null ? m.accuracy.toFixed(4) : '',
+                m.f1_score !== null ? m.f1_score.toFixed(4) : '',
+                m.precision_p1 !== null ? m.precision_p1.toFixed(4) : '',
+                m.precision_p2 !== null ? m.precision_p2.toFixed(4) : '',
+                m.precision_p3 !== null ? m.precision_p3.toFixed(4) : '',
+                m.recall_p1 !== null ? m.recall_p1.toFixed(4) : '',
+                m.recall_p2 !== null ? m.recall_p2.toFixed(4) : '',
+                m.recall_p3 !== null ? m.recall_p3.toFixed(4) : '',
+                m.training_samples_count || '',
+                m.is_active ? 'Active' : 'Inactive',
+                `"${(m.notes || '').replace(/"/g, '""')}"`
+            ]);
+
+            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `ml_models_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
         }
 
         // Initial load

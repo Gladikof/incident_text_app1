@@ -87,11 +87,17 @@ class TicketService:
             ticket.triage_required = ml_result["triage_required"]
             ticket.triage_reason = ml_result["triage_reason"]
 
+            # Зберігаємо ensemble рішення (комбінація ML + LLM)
+            ticket.priority_ensemble = ml_result.get("priority_ensemble")
+            ticket.ensemble_confidence = ml_result.get("ensemble_confidence")
+            ticket.ensemble_strategy = ml_result.get("ensemble_strategy")
+            ticket.ensemble_reasoning = ml_result.get("ensemble_reasoning")
+
             # 3. Логіка AUTO_APPLY режиму
             if settings.ml_mode == MLModeEnum.AUTO_APPLY and not ticket.triage_required:
-                # Автоматично застосовуємо ML рекомендації
-                if ticket.priority_ml_suggested:
-                    ticket.priority_manual = ticket.priority_ml_suggested
+                # Автоматично застосовуємо ENSEMBLE рекомендації (ML + LLM комбіновані!)
+                if ticket.priority_ensemble:
+                    ticket.priority_manual = ticket.priority_ensemble  # ✅ ВИПРАВЛЕНО: використовуємо ensemble
                     ticket.priority_accepted = True
 
                 if ticket.category_ml_suggested:
@@ -356,6 +362,64 @@ class TicketService:
         db.flush()
 
     @staticmethod
+    def _record_priority_implicit_feedback(
+        db: Session,
+        ticket: Ticket,
+        actor: Optional[User],
+        reason: str,
+    ) -> None:
+        """
+        Записує implicit feedback коли тікет вирішується без зміни пріоритету.
+
+        Implicit feedback = користувач НЕ змінив пріоритет, отже ML prediction був правильний.
+
+        Args:
+            db: Database session
+            ticket: Ticket object
+            actor: Користувач який вирішив тікет
+            reason: Причина (напр. "IMPLICIT_RESOLVED_WITHOUT_PRIORITY_CHANGE")
+        """
+        log_entry = (
+            db.query(MLPredictionLog)
+            .filter(MLPredictionLog.ticket_id == ticket.id)
+            .order_by(MLPredictionLog.created_at.desc())
+            .first()
+        )
+
+        if not log_entry:
+            # Створюємо новий log entry якщо немає
+            log_entry = MLPredictionLog(
+                ticket_id=ticket.id,
+                model_version=ticket.ml_model_version or "unknown",
+                priority_predicted=ticket.priority_ml_suggested,
+                priority_confidence=ticket.priority_ml_confidence,
+                category_predicted=ticket.category_ml_suggested,
+                category_confidence=ticket.category_ml_confidence,
+                priority_final=ticket.priority_manual,
+                category_final=ticket.category,
+                triage_reason=ticket.triage_reason,
+            )
+            db.add(log_entry)
+        else:
+            # Оновлюємо існуючий
+            if not log_entry.priority_final:
+                log_entry.priority_final = ticket.priority_manual
+            if not log_entry.category_final:
+                log_entry.category_final = ticket.category
+
+        # Записуємо implicit feedback
+        log_entry.priority_feedback_reason = reason
+        log_entry.priority_feedback_author_id = actor.id if actor else None
+        log_entry.priority_feedback_recorded_at = datetime.utcnow()
+
+        # Позначаємо що priority було "accepted" (неявно, через RESOLVED)
+        ticket.priority_accepted = True
+        if ticket.category_ml_suggested:
+            ticket.category_accepted = True
+
+        db.flush()
+
+    @staticmethod
     def claim_ticket(
         ticket_id: int,
         agent: User,
@@ -449,6 +513,7 @@ class TicketService:
         ticket_id: int,
         new_status: StatusEnum,
         db: Session,
+        actor: Optional[User] = None,
     ) -> Ticket:
         """
         Оновлення статусу тікета.
@@ -457,13 +522,24 @@ class TicketService:
             ticket_id: ID тікета
             new_status: Новий статус
             db: Database session
+            actor: Користувач який змінює статус (для ML feedback)
 
         Returns:
             Оновлений Ticket
+
+        ML Learning:
+            Коли тікет вирішується (RESOLVED), це implicit feedback що:
+            - Пріоритет був коректний (інакше б змінили)
+            - Категорія була коректна
+            - Assignment був правильний
+
+            Це дані для навчання ML моделі.
         """
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not ticket:
             raise HTTPException(status_code=404, detail="Ticket not found")
+
+        previous_status = ticket.status
 
         # Валідація переходів статусів (опціонально)
         # Наприклад: NEW -> IN_PROGRESS -> RESOLVED -> CLOSED
@@ -474,10 +550,32 @@ class TicketService:
 
         if new_status == StatusEnum.RESOLVED:
             ticket.resolved_at = datetime.utcnow()
+
+            # 📚 ML IMPLICIT FEEDBACK: Тікет вирішено без зміни пріоритету/категорії
+            # Це означає що ML prediction був правильний!
+            if ticket.priority_ml_suggested and not ticket.priority_accepted:
+                # Якщо ML suggested priority не було явно змінено - це implicit confirmation
+                TicketService._record_priority_implicit_feedback(
+                    db=db,
+                    ticket=ticket,
+                    actor=actor,
+                    reason="IMPLICIT_RESOLVED_WITHOUT_PRIORITY_CHANGE"
+                )
+                print(f"[ML FEEDBACK] Тікет #{ticket.incident_id} вирішено без зміни пріоритету - "
+                      f"implicit confirmation ML priority={ticket.priority_manual}")
+
         elif new_status == StatusEnum.CLOSED:
             ticket.closed_at = datetime.utcnow()
 
         db.commit()
+
+        # Експортуємо dataset якщо є новий feedback
+        if new_status == StatusEnum.RESOLVED and ticket.priority_ml_suggested:
+            try:
+                training_feedback_service.export_priority_feedback_dataset(db)
+            except Exception as exc:
+                print(f"[TRAINING_FEEDBACK] Failed to export dataset: {exc}")
+
         db.refresh(ticket)
 
         return ticket

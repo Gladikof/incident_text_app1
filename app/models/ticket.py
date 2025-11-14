@@ -47,6 +47,12 @@ class Ticket(Base):
     # === ML метадані ===
     ml_model_version = Column(String(50), nullable=True)
 
+    # === Ensemble ML + LLM поля ===
+    priority_ensemble = Column(SQLEnum(PriorityEnum), nullable=True)  # Фінальне рішення ensemble
+    ensemble_confidence = Column(Float, nullable=True)  # Впевненість ensemble (0..1)
+    ensemble_strategy = Column(String(50), nullable=True)  # Стратегія: HIGH_CONF_ML, AGREEMENT, тощо
+    ensemble_reasoning = Column(Text, nullable=True)  # Пояснення рішення
+
     # === Triage поля ===
     triage_required = Column(Boolean, default=False, index=True)
     triage_reason = Column(SQLEnum(TriageReasonEnum), nullable=True)

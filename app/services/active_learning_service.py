@@ -99,7 +99,7 @@ class ActiveLearningService:
         )
 
     def get_training_data(
-        self, db: Session, since_date: Optional[datetime] = None
+        self, db: Session, since_date: Optional[datetime] = None, use_tickets: bool = False
     ) -> Tuple[list, list]:
         """
         Витягує тренувальні дані з БД.
@@ -107,10 +107,40 @@ class ActiveLearningService:
         Args:
             db: Database session
             since_date: Якщо вказано - бере тільки feedback після цієї дати
+            use_tickets: Якщо True - використовує тікети замість ML логів (для initial training)
 
         Returns:
             (texts: list[str], labels: list[str])
         """
+        texts = []
+        labels = []
+
+        # Для initial training - використовуємо тікети напряму
+        if use_tickets:
+            from app.models.ticket import Ticket
+            tickets = db.query(Ticket).filter(
+                Ticket.priority_manual.isnot(None),
+                Ticket.title.isnot(None),
+                Ticket.description.isnot(None)
+            ).all()
+
+            for ticket in tickets:
+                # Комбінуємо title + description як input text
+                text = f"{ticket.title}\n{ticket.description}"
+                texts.append(text.strip())
+
+                # Конвертуємо PriorityEnum -> str label для ML
+                priority = ticket.priority_manual
+                if priority == PriorityEnum.P1:
+                    labels.append("high")
+                elif priority == PriorityEnum.P2:
+                    labels.append("medium")
+                elif priority == PriorityEnum.P3:
+                    labels.append("low")
+
+            return texts, labels
+
+        # Для incremental learning - використовуємо ML prediction logs
         query = db.query(MLPredictionLog).filter(
             MLPredictionLog.priority_final.isnot(None), MLPredictionLog.input_text.isnot(None)
         )
@@ -119,9 +149,6 @@ class ActiveLearningService:
             query = query.filter(MLPredictionLog.priority_feedback_recorded_at > since_date)
 
         logs = query.all()
-
-        texts = []
-        labels = []
 
         for log in logs:
             if not log.input_text or not log.priority_final:
@@ -161,7 +188,9 @@ class ActiveLearningService:
 
         try:
             # Отримуємо всі тренувальні дані
-            texts, labels = self.get_training_data(db)
+            # Для INITIAL training використовуємо тікети напряму
+            use_tickets = (training_type == "INITIAL")
+            texts, labels = self.get_training_data(db, use_tickets=use_tickets)
 
             if len(texts) < self.MIN_TOTAL_SAMPLES:
                 raise ValueError(
