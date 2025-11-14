@@ -18,6 +18,8 @@ from app.models.settings import SystemSettings
 from app.schemas.ticket import TicketCreate, TicketUpdate
 from app.services.ml_service import ml_service
 from app.services.assignee_service import assignee_service
+from app.services.smart_assignment_service import smart_assignment_service
+import json
 
 
 class TicketService:
@@ -96,30 +98,40 @@ class TicketService:
                     ticket.category = ticket.category_ml_suggested
                     ticket.category_accepted = True
 
-            # 3.5. Автоматичне призначення спеціаліста (якщо високий confidence)
+            # 3.5. ⭐ SMART ASSIGNMENT - інтелектуальний вибір виконавця ⭐
             if not ticket.triage_required and ticket.category_ml_suggested:
-                # Спочатку пробуємо learning-based метод (на основі ключових слів та історії)
                 full_text = f"{ticket.title}\n{ticket.description}"
-                recommended_agent = assignee_service.recommend_by_expertise(
+
+                # Витягуємо LLM suggestions з ml_result
+                llm_result = ml_result.get("llm_result", {})
+                llm_team = llm_result.get("team")
+                llm_assignee = llm_result.get("assignee")
+
+                # Викликаємо Smart Assignment Service (Hybrid Approach)
+                assignment_result = smart_assignment_service.find_best_assignee(
                     ticket_text=full_text,
-                    category=ticket.category_ml_suggested,
+                    priority=ml_result.get("priority_ensemble") or ticket.priority_manual.value,
+                    category=ticket.category_ml_suggested.value,
                     department_id=ticket.department_id,
-                    db=db
+                    llm_team=llm_team,
+                    llm_assignee=llm_assignee,
+                    db=db,
                 )
 
-                # Якщо learning-based метод не знайшов (немає історії), fallback на recommend_assignee
-                if not recommended_agent:
-                    recommended_agent = assignee_service.recommend_assignee(
-                        category=ticket.category_ml_suggested,
-                        department_id=ticket.department_id,
-                        db=db
-                    )
+                # Застосовуємо результат assignment
+                if assignment_result.get("assignee_id"):
+                    ticket.assigned_to_user_id = assignment_result["assignee_id"]
+                    ticket.auto_assigned = True
+                    ticket.assignment_confirmed = None
 
-                if recommended_agent:
-                    ticket.assigned_to_user_id = recommended_agent.id
-                    ticket.auto_assigned = True  # Позначаємо що призначено автоматично
-                    ticket.assignment_confirmed = None  # Очікує підтвердження від спеціаліста
-                    print(f"[AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено {recommended_agent.full_name}")
+                    # Логування Smart Assignment decision
+                    ticket.assignment_method = assignment_result["method"]
+                    ticket.assignment_confidence = assignment_result["confidence"]
+                    ticket.assignment_reasoning = assignment_result["reasoning"]
+                    ticket.assignment_alternatives = json.dumps(assignment_result["alternatives"])
+
+                    print(f"[SMART-ASSIGN] Тікет #{ticket.incident_id} призначено через {assignment_result['method']} "
+                          f"з confidence {assignment_result['confidence']:.2f}")
 
             # 4. Визначення статусу
             if ticket.triage_required:

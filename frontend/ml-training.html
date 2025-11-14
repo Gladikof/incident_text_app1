@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Training - Service Desk</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li id="ml-logs-nav" style="display: none;"><a href="ml-logs.html" class="nav-link">ML Logs</a></li>
+            <li id="ml-training-nav" style="display: none;"><a href="ml-training.html" class="nav-link active">ML Training</a></li>
+            <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
+            <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
+            <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <h1>ML Training Dashboard</h1>
+
+        <!-- Training Status Card -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h2>Training Status</h2>
+            <div id="training-status-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div class="stat-card">
+                    <div class="stat-label">Should Retrain</div>
+                    <div class="stat-value" id="should-retrain">Loading...</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">New Feedbacks</div>
+                    <div class="stat-value" id="new-feedbacks">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Threshold</div>
+                    <div class="stat-value" id="feedback-threshold">50</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Model</div>
+                    <div class="stat-value" id="active-model-version" style="font-size: 0.9rem;">-</div>
+                </div>
+            </div>
+            <div style="margin-top: 1.5rem;">
+                <button class="btn btn-primary" onclick="triggerManualTraining(false)" id="train-btn">
+                    Train Model
+                </button>
+                <button class="btn btn-secondary" onclick="triggerManualTraining(true)" id="force-train-btn">
+                    Force Train
+                </button>
+                <button class="btn btn-secondary" onclick="loadData()" style="margin-left: 1rem;">
+                    Refresh
+                </button>
+            </div>
+            <div id="status-reason" style="margin-top: 1rem; padding: 1rem; background: var(--dark-lighter); border-radius: 4px; display: none;">
+                <strong>Reason:</strong> <span id="reason-text"></span>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+            <div class="card">
+                <h2>Accuracy Over Time</h2>
+                <canvas id="accuracy-chart"></canvas>
+            </div>
+            <div class="card">
+                <h2>Precision by Priority</h2>
+                <canvas id="precision-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Models Table -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h2>ML Models</h2>
+            <table style="width: 100%; margin-top: 1rem;">
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Created</th>
+                        <th>Accuracy</th>
+                        <th>F1 Score</th>
+                        <th>Samples</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="models-table-body">
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Training Jobs Table -->
+        <div class="card">
+            <h2>Training History</h2>
+            <div style="margin-bottom: 1rem;">
+                <button class="btn btn-sm" onclick="filterJobs('ALL')" id="filter-all">All</button>
+                <button class="btn btn-sm" onclick="filterJobs('COMPLETED')" id="filter-completed">Completed</button>
+                <button class="btn btn-sm" onclick="filterJobs('RUNNING')" id="filter-running">Running</button>
+                <button class="btn btn-sm" onclick="filterJobs('FAILED')" id="filter-failed">Failed</button>
+            </div>
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Started</th>
+                        <th>Duration</th>
+                        <th>Type</th>
+                        <th>Model Version</th>
+                        <th>Samples</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="jobs-table-body">
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+
+        // Check auth
+        const token = localStorage.getItem('token');
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Check ADMIN only
+        if (currentUser.role !== 'ADMIN') {
+            alert('Доступ заборонено. Тільки для адміністраторів.');
+            window.location.href = 'dashboard.html';
+        }
+
+        // Update navbar
+        const userName = currentUser.full_name || currentUser.email;
+        document.getElementById('user-name').textContent = userName;
+
+        // Show nav links based on role
+        if (currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') {
+            document.getElementById('ml-logs-nav').style.display = 'block';
+        }
+
+        if (currentUser.role === 'ADMIN') {
+            document.getElementById('ml-training-nav').style.display = 'block';
+            document.getElementById('admin-nav-users').style.display = 'block';
+            document.getElementById('admin-nav-departments').style.display = 'block';
+        }
+
+        // Logout handler
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = 'login.html';
+        });
+
+        // Charts
+        let accuracyChart = null;
+        let precisionChart = null;
+
+        // Current filter
+        let currentJobsFilter = 'ALL';
+
+        // Load all data
+        async function loadData() {
+            await Promise.all([
+                loadTrainingStatus(),
+                loadModels(),
+                loadJobs(currentJobsFilter)
+            ]);
+        }
+
+        // Load training status
+        async function loadTrainingStatus() {
+            try {
+                const status = await api.getTrainingStatus();
+
+                document.getElementById('should-retrain').textContent = status.should_retrain ? 'YES' : 'NO';
+                document.getElementById('should-retrain').style.color = status.should_retrain ? 'var(--success)' : 'var(--gray)';
+                document.getElementById('new-feedbacks').textContent = status.new_feedback_count;
+                document.getElementById('feedback-threshold').textContent = status.min_feedback_threshold;
+
+                document.getElementById('reason-text').textContent = status.reason;
+                document.getElementById('status-reason').style.display = 'block';
+
+                // Disable train button if not needed
+                document.getElementById('train-btn').disabled = !status.should_retrain;
+
+            } catch (error) {
+                console.error('Failed to load training status:', error);
+            }
+        }
+
+        // Load models
+        async function loadModels() {
+            try {
+                const models = await api.getModels(20);
+
+                const tbody = document.getElementById('models-table-body');
+
+                if (models.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">No models found</td></tr>';
+                    return;
+                }
+
+                // Find active model
+                const activeModel = models.find(m => m.is_active);
+                if (activeModel) {
+                    document.getElementById('active-model-version').textContent = activeModel.version;
+                }
+
+                tbody.innerHTML = models.map(model => `
+                    <tr style="background: ${model.is_active ? 'var(--primary-transparent)' : 'transparent'};">
+                        <td style="font-family: monospace; font-size: 0.85rem;">${model.version}</td>
+                        <td>${new Date(model.created_at).toLocaleString('uk-UA')}</td>
+                        <td>${model.accuracy ? (model.accuracy * 100).toFixed(1) + '%' : '-'}</td>
+                        <td>${model.f1_score ? (model.f1_score * 100).toFixed(1) + '%' : '-'}</td>
+                        <td>${model.training_samples_count || '-'}</td>
+                        <td>
+                            ${model.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-secondary">Inactive</span>'}
+                        </td>
+                        <td>
+                            ${!model.is_active ? `<button class="btn btn-sm btn-primary" onclick="activateModel('${model.version}')">Activate</button>` : ''}
+                            <button class="btn btn-sm btn-secondary" onclick="showModelDetails('${model.version}')">Details</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Update charts
+                updateCharts(models);
+
+            } catch (error) {
+                console.error('Failed to load models:', error);
+            }
+        }
+
+        // Update charts
+        function updateCharts(models) {
+            // Sort by created_at
+            const sortedModels = [...models].sort((a, b) =>
+                new Date(a.created_at) - new Date(b.created_at)
+            );
+
+            // Accuracy chart
+            const accuracyCtx = document.getElementById('accuracy-chart');
+            if (accuracyChart) accuracyChart.destroy();
+
+            accuracyChart = new Chart(accuracyCtx, {
+                type: 'line',
+                data: {
+                    labels: sortedModels.map(m => m.version.replace('v', '').substring(0, 13)),
+                    datasets: [{
+                        label: 'Accuracy',
+                        data: sortedModels.map(m => m.accuracy ? m.accuracy * 100 : null),
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }, {
+                        label: 'F1 Score',
+                        data: sortedModels.map(m => m.f1_score ? m.f1_score * 100 : null),
+                        borderColor: 'rgb(153, 102, 255)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e0e0e0' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#e0e0e0' },
+                            grid: { color: '#333' }
+                        },
+                        x: {
+                            ticks: { color: '#e0e0e0' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+
+            // Precision chart (latest model)
+            const latestModel = sortedModels[sortedModels.length - 1];
+            const precisionCtx = document.getElementById('precision-chart');
+            if (precisionChart) precisionChart.destroy();
+
+            precisionChart = new Chart(precisionCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['P1 (High)', 'P2 (Medium)', 'P3 (Low)'],
+                    datasets: [{
+                        label: 'Precision',
+                        data: [
+                            latestModel.precision_p1 ? latestModel.precision_p1 * 100 : 0,
+                            latestModel.precision_p2 ? latestModel.precision_p2 * 100 : 0,
+                            latestModel.precision_p3 ? latestModel.precision_p3 * 100 : 0
+                        ],
+                        backgroundColor: ['rgba(255, 99, 132, 0.5)', 'rgba(255, 206, 86, 0.5)', 'rgba(54, 162, 235, 0.5)'],
+                        borderColor: ['rgba(255, 99, 132, 1)', 'rgba(255, 206, 86, 1)', 'rgba(54, 162, 235, 1)'],
+                        borderWidth: 1
+                    }, {
+                        label: 'Recall',
+                        data: [
+                            latestModel.recall_p1 ? latestModel.recall_p1 * 100 : 0,
+                            latestModel.recall_p2 ? latestModel.recall_p2 * 100 : 0,
+                            latestModel.recall_p3 ? latestModel.recall_p3 * 100 : 0
+                        ],
+                        backgroundColor: ['rgba(255, 99, 132, 0.2)', 'rgba(255, 206, 86, 0.2)', 'rgba(54, 162, 235, 0.2)'],
+                        borderColor: ['rgba(255, 99, 132, 1)', 'rgba(255, 206, 86, 1)', 'rgba(54, 162, 235, 1)'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e0e0e0' }
+                        },
+                        title: {
+                            display: true,
+                            text: `Model: ${latestModel.version}`,
+                            color: '#e0e0e0'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#e0e0e0' },
+                            grid: { color: '#333' }
+                        },
+                        x: {
+                            ticks: { color: '#e0e0e0' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load jobs
+        async function loadJobs(statusFilter = 'ALL') {
+            try {
+                const jobs = await api.getTrainingJobs({
+                    limit: 50,
+                    status: statusFilter === 'ALL' ? null : statusFilter
+                });
+
+                const tbody = document.getElementById('jobs-table-body');
+
+                if (jobs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">No training jobs found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = jobs.map(job => {
+                    const duration = job.completed_at
+                        ? ((new Date(job.completed_at) - new Date(job.started_at)) / 1000 / 60).toFixed(1) + ' min'
+                        : 'Running...';
+
+                    let statusBadge = '';
+                    if (job.status === 'COMPLETED') {
+                        statusBadge = '<span class="badge badge-success">Completed</span>';
+                    } else if (job.status === 'RUNNING') {
+                        statusBadge = '<span class="badge badge-warning">Running</span>';
+                    } else if (job.status === 'FAILED') {
+                        statusBadge = '<span class="badge badge-danger">Failed</span>';
+                    }
+
+                    return `
+                        <tr>
+                            <td>#${job.id}</td>
+                            <td>${new Date(job.started_at).toLocaleString('uk-UA')}</td>
+                            <td>${duration}</td>
+                            <td><span class="badge badge-secondary">${job.training_type}</span></td>
+                            <td style="font-family: monospace; font-size: 0.85rem;">${job.model_version || '-'}</td>
+                            <td>${job.total_training_samples || '-'}</td>
+                            <td>${statusBadge}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load jobs:', error);
+            }
+        }
+
+        // Filter jobs
+        function filterJobs(status) {
+            currentJobsFilter = status;
+
+            // Update button states
+            ['all', 'completed', 'running', 'failed'].forEach(s => {
+                document.getElementById(`filter-${s}`).classList.remove('btn-primary');
+                document.getElementById(`filter-${s}`).classList.add('btn-secondary');
+            });
+
+            const btnId = status.toLowerCase() === 'all' ? 'filter-all' : `filter-${status.toLowerCase()}`;
+            document.getElementById(btnId).classList.remove('btn-secondary');
+            document.getElementById(btnId).classList.add('btn-primary');
+
+            loadJobs(status);
+        }
+
+        // Trigger manual training
+        async function triggerManualTraining(force = false) {
+            if (!confirm(`Are you sure you want to ${force ? 'force ' : ''}train a new model?`)) {
+                return;
+            }
+
+            const btn = force ? document.getElementById('force-train-btn') : document.getElementById('train-btn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Training...';
+            btn.disabled = true;
+
+            try {
+                const result = await api.triggerTraining(force);
+
+                if (result.success) {
+                    alert(`Success: ${result.message}\nJob ID: ${result.job_id}`);
+                    await loadData();
+                } else {
+                    alert(`Training not started: ${result.message}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Activate model
+        async function activateModel(version) {
+            if (!confirm(`Are you sure you want to activate model ${version}?`)) {
+                return;
+            }
+
+            try {
+                const result = await api.activateModel(version);
+
+                if (result.success) {
+                    alert(result.message);
+                    await loadData();
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Show model details
+        async function showModelDetails(version) {
+            try {
+                const model = await api.getModel(version);
+
+                const details = `
+Model: ${model.version}
+Created: ${new Date(model.created_at).toLocaleString('uk-UA')}
+Status: ${model.is_active ? 'Active' : 'Inactive'}
+
+Metrics:
+- Accuracy: ${model.accuracy ? (model.accuracy * 100).toFixed(2) + '%' : 'N/A'}
+- F1 Score: ${model.f1_score ? (model.f1_score * 100).toFixed(2) + '%' : 'N/A'}
+
+Precision:
+- P1: ${model.precision_p1 ? (model.precision_p1 * 100).toFixed(2) + '%' : 'N/A'}
+- P2: ${model.precision_p2 ? (model.precision_p2 * 100).toFixed(2) + '%' : 'N/A'}
+- P3: ${model.precision_p3 ? (model.precision_p3 * 100).toFixed(2) + '%' : 'N/A'}
+
+Recall:
+- P1: ${model.recall_p1 ? (model.recall_p1 * 100).toFixed(2) + '%' : 'N/A'}
+- P2: ${model.recall_p2 ? (model.recall_p2 * 100).toFixed(2) + '%' : 'N/A'}
+- P3: ${model.recall_p3 ? (model.recall_p3 * 100).toFixed(2) + '%' : 'N/A'}
+
+Training Samples: ${model.training_samples_count || 'N/A'}
+
+Notes: ${model.notes || 'None'}
+                `.trim();
+
+                alert(details);
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Initial load
+        loadData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+
+    <style>
+        .stat-card {
+            background: var(--dark-lighter);
+            padding: 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--gray-light);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-warning {
+            background: var(--warning);
+            color: var(--dark);
+        }
+
+        .badge-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .badge-secondary {
+            background: var(--gray);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</body>
+</html>

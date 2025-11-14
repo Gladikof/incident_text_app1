@@ -8,17 +8,19 @@
 </head>
 <body>
     <nav class="navbar">
-        <div class="navbar-brand">Service Desk - Управління Департаментами</div>
-        <div class="navbar-links">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="tickets.html">Тікети</a>
-            <a href="board.html">Board</a>
-            <a href="analytics.html">Analytics</a>
-            <a href="admin-users.html">Users</a>
-            <a href="admin-departments.html" class="active">Departments</a>
-            <span id="user-email"></span>
-            <a href="login.html" onclick="logout()">Вихід</a>
-        </div>
+        <a href="dashboard.html" class="navbar-brand">Service Desk</a>
+        <ul class="navbar-nav">
+            <li><a href="dashboard.html" class="nav-link">Dashboard</a></li>
+            <li><a href="tickets.html" class="nav-link">Tickets</a></li>
+            <li><a href="board.html" class="nav-link">Board</a></li>
+            <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li id="ml-logs-nav" style="display: none;"><a href="ml-logs.html" class="nav-link">ML Logs</a></li>
+            <li id="ml-training-nav" style="display: none;"><a href="ml-training.html" class="nav-link">ML Training</a></li>
+            <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
+            <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link active">Departments</a></li>
+            <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+        </ul>
     </nav>
 
     <div class="container">
@@ -138,12 +140,33 @@
             window.location.href = 'dashboard.html';
         }
 
-        document.getElementById('user-email').textContent = currentUser.email;
+        // Update navbar with user name
+        const userName = currentUser.full_name || currentUser.email;
+        document.getElementById('user-name').textContent = userName;
 
-        function logout() {
+        // Show ML Logs for LEAD and ADMIN
+        if (currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') {
+            document.getElementById('ml-logs-nav').style.display = 'block';
+        }
+
+        // Show admin links for ADMIN
+        if (currentUser.role === 'ADMIN') {
+            document.getElementById('admin-nav-users').style.display = 'block';
+            document.getElementById('admin-nav-departments').style.display = 'block';
+        }
+
+        // Show ML Training for ADMIN only
+        if (currentUser.role === 'ADMIN') {
+            document.getElementById('ml-training-nav').style.display = 'block';
+        }
+
+        // Logout handler
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-        }
+            window.location.href = 'login.html';
+        });
 
         // Load departments and their user counts
         async function loadDepartments() {

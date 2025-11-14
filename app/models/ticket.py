@@ -67,6 +67,12 @@ class Ticket(Base):
     assignment_confirmed_at = Column(DateTime, nullable=True)  # Коли підтверджено/відхилено
     assignment_feedback = Column(Text, nullable=True)  # Коментар спеціаліста
 
+    # === Smart Assignment Decision Logging ===
+    assignment_method = Column(String(50), nullable=True)  # LLM_ONLY, SMART_SERVICE, HYBRID, MANUAL
+    assignment_confidence = Column(Float, nullable=True)  # Confidence score (0-1)
+    assignment_reasoning = Column(Text, nullable=True)  # Пояснення чому обрано цього agent
+    assignment_alternatives = Column(Text, nullable=True)  # JSON: топ-3 альтернативи
+
     # === Метадані ===
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

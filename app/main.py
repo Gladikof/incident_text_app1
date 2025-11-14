@@ -42,12 +42,14 @@ app.add_middleware(
 )
 
 # === Routers ===
-from app.routers import tickets, departments, users
+from app.routers import tickets, departments, users, ml_logs, ml_training
 
 app.include_router(auth.router)
 app.include_router(tickets.router)
 app.include_router(departments.router)
 app.include_router(users.router)
+app.include_router(ml_logs.router)
+app.include_router(ml_training.router)
 
 
 @app.on_event("startup")
@@ -59,6 +61,24 @@ def _load_ml():
         ml_model.load()
     except Exception as e:
         print("[ML] ERROR: Не вдалося завантажити модель:", e)
+
+    # Запускаємо background scheduler для автоматичного перенавчання
+    from app.services.ml_scheduler import ml_scheduler
+
+    try:
+        ml_scheduler.start()
+    except Exception as e:
+        print("[ML] ERROR: Не вдалося запустити ML scheduler:", e)
+
+
+@app.on_event("shutdown")
+def _shutdown_ml_scheduler():
+    """
+    Зупиняємо scheduler при shutdown.
+    """
+    from app.services.ml_scheduler import ml_scheduler
+
+    ml_scheduler.stop()
 
 
 # === API ===

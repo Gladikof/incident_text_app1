@@ -8,6 +8,7 @@ from app.models.ticket import Ticket
 from app.models.comment import TicketComment
 from app.models.ml_log import MLPredictionLog
 from app.models.settings import SystemSettings
+from app.models.ml_model_metadata import MLModelMetadata, MLTrainingJob
 
 __all__ = [
     "User",
@@ -17,4 +18,6 @@ __all__ = [
     "TicketComment",
     "MLPredictionLog",
     "SystemSettings",
+    "MLModelMetadata",
+    "MLTrainingJob",
 ]

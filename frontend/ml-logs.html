@@ -15,6 +15,7 @@
             <li><a href="board.html" class="nav-link">Board</a></li>
             <li><a href="analytics.html" class="nav-link">Analytics</a></li>
             <li><a href="ml-logs.html" class="nav-link active">ML Logs</a></li>
+            <li id="ml-training-nav" style="display: none;"><a href="ml-training.html" class="nav-link">ML Training</a></li>
             <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
             <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
             <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
@@ -88,6 +89,11 @@
             if (currentUser.role === 'ADMIN') {
                 document.getElementById('admin-nav-users').style.display = 'block';
                 document.getElementById('admin-nav-departments').style.display = 'block';
+            }
+
+            // Show ML Training for ADMIN only
+            if (currentUser.role === 'ADMIN') {
+                document.getElementById('ml-training-nav').style.display = 'block';
             }
         }
 

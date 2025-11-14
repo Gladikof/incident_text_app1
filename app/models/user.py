@@ -2,7 +2,7 @@
 User model
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -32,6 +32,11 @@ class User(Base):
     # Приклад: "VPN,Remote Access,Cisco AnyConnect" або "Local Network,Switches,VLAN"
     specialty = Column(Text, nullable=True)
 
+    # Smart Assignment fields
+    workload_capacity = Column(Integer, default=10, nullable=False)  # Максимум тікетів одночасно
+    assignment_score = Column(Float, default=0.0, nullable=False)    # Historical performance (0-1)
+    availability_status = Column(String(20), default="AVAILABLE", nullable=False)  # AVAILABLE, BUSY, OFFLINE, ON_LEAVE
+
     # Метадані
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -42,6 +47,11 @@ class User(Base):
     assigned_tickets = relationship("Ticket", foreign_keys="Ticket.assigned_to_user_id", back_populates="assigned_to")
     owned_assets = relationship("Asset", back_populates="owner")
     comments = relationship("TicketComment", back_populates="author")
+    ml_feedback_logs = relationship(
+        "MLPredictionLog",
+        foreign_keys="MLPredictionLog.priority_feedback_author_id",
+        back_populates="feedback_author",
+    )
 
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"

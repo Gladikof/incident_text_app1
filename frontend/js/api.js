@@ -124,6 +124,54 @@ class ApiClient {
         });
     }
 
+    async getMlLogs({ limit = 50, offset = 0, ticketId = null } = {}) {
+        const params = new URLSearchParams({ limit, offset });
+        if (ticketId) {
+            params.append('ticket_id', ticketId);
+        }
+        return this.request(`/ml/logs?${params.toString()}`);
+    }
+
+    // ML Training
+    async getTrainingStatus() {
+        return this.request('/ml/training/status');
+    }
+
+    async triggerTraining(force = false) {
+        const params = force ? '?force=true' : '';
+        return this.request(`/ml/training/trigger${params}`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    async getModels(limit = 20) {
+        return this.request(`/ml/training/models?limit=${limit}`);
+    }
+
+    async getModel(version) {
+        return this.request(`/ml/training/models/${version}`);
+    }
+
+    async activateModel(version) {
+        return this.request(`/ml/training/models/${version}/activate`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    async getTrainingJobs({ limit = 20, status = null } = {}) {
+        const params = new URLSearchParams({ limit });
+        if (status) {
+            params.append('status', status);
+        }
+        return this.request(`/ml/training/jobs?${params.toString()}`);
+    }
+
+    async getTrainingJob(jobId) {
+        return this.request(`/ml/training/jobs/${jobId}`);
+    }
+
     // Departments
     async getDepartments() {
         return this.request('/departments');

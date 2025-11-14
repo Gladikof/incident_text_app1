@@ -13,6 +13,7 @@ from app.models.ml_log import MLPredictionLog
 from app.models.settings import SystemSettings
 from app.ml_model import ml_model
 from app.llm_router import route_with_llm
+from app.services.ensemble_service import ensemble_service
 
 
 class MLService:
@@ -92,26 +93,65 @@ class MLService:
                 priority_ml = None
                 priority_conf = None
 
-        # 3. Визначення потреби в тріажі
-        triage_required = False
-        triage_reason = None
+        # 3. LLM priority (витягуємо з llm_result)
+        llm_priority_ml = None
+        llm_priority_conf = None
+        if llm_result and llm_result.get("priority"):
+            llm_priority_str = llm_result.get("priority")  # "P1", "P2", "P3"
+            llm_priority_ml = MLService._map_llm_priority(llm_priority_str)
+            # Припускаємо високу впевненість для LLM (0.8)
+            llm_priority_conf = 0.8
 
-        if priority_conf is not None and priority_conf < settings.ml_conf_threshold_priority:
-            triage_required = True
-            triage_reason = TriageReasonEnum.LOW_PRIORITY_CONF
-        elif category_conf is not None and category_conf < settings.ml_conf_threshold_category:
-            triage_required = True
-            triage_reason = TriageReasonEnum.LOW_CATEGORY_CONF
+        # 4. ENSEMBLE DECISION - комбінуємо ML та LLM predictions
+        (
+            ensemble_priority,
+            ensemble_confidence,
+            triage_required,
+            triage_reason,
+            ensemble_reasoning
+        ) = ensemble_service.combine_predictions(
+            ml_priority=priority_ml,
+            ml_confidence=priority_conf,
+            llm_priority=llm_priority_ml,
+            llm_confidence=llm_priority_conf
+        )
 
-        # 4. Логування результатів
+        # Отримуємо додаткову статистику
+        ensemble_stats = ensemble_service.get_strategy_stats(
+            ml_priority=priority_ml,
+            ml_confidence=priority_conf,
+            llm_priority=llm_priority_ml,
+            llm_confidence=llm_priority_conf
+        )
+
+        # Перевіряємо category confidence
+        if category_conf is not None and category_conf < settings.ml_conf_threshold_category:
+            if not triage_required:  # Якщо ще не потрібен
+                triage_required = True
+                triage_reason = TriageReasonEnum.LOW_CATEGORY_CONF
+
+        # 5. Логування результатів
         if ticket_id:
             log_entry = MLPredictionLog(
                 ticket_id=ticket_id,
                 model_version=ml_model_version or "unknown",
+                # ML predictions
                 priority_predicted=priority_ml,
                 priority_confidence=priority_conf,
+                # LLM predictions
+                priority_llm_predicted=llm_priority_ml,
+                priority_llm_confidence=llm_priority_conf,
+                # Category
                 category_predicted=category_ml,
                 category_confidence=category_conf,
+                # Ensemble decision
+                ensemble_priority=ensemble_priority,
+                ensemble_confidence=ensemble_confidence,
+                ensemble_strategy=ensemble_stats.get("strategy_used"),
+                ensemble_reasoning=ensemble_reasoning,
+                # Triage
+                triage_reason=triage_reason,
+                # Other
                 input_text=f"{title}\n{description}",
                 notes=str(llm_result) if llm_result else None,
             )
@@ -120,12 +160,24 @@ class MLService:
 
         return {
             "ml_enabled": True,
+            # ML predictions
             "priority_ml_suggested": priority_ml,
             "priority_ml_confidence": priority_conf,
+            # LLM predictions
+            "priority_llm_suggested": llm_priority_ml,
+            "priority_llm_confidence": llm_priority_conf,
+            # ENSEMBLE decision (основне рішення!)
+            "priority_ensemble": ensemble_priority,
+            "ensemble_confidence": ensemble_confidence,
+            "ensemble_strategy": ensemble_stats.get("strategy_used"),
+            "ensemble_reasoning": ensemble_reasoning,
+            # Category
             "category_ml_suggested": category_ml,
             "category_ml_confidence": category_conf,
+            # Triage
             "triage_required": triage_required,
             "triage_reason": triage_reason,
+            # Other
             "ml_model_version": ml_model_version,
             "llm_result": llm_result,  # Додаткові дані (team, assignee тощо)
         }
@@ -151,6 +203,18 @@ class MLService:
             "low": PriorityEnum.P3,
         }
         return mapping.get(ml_label.lower())
+
+    @staticmethod
+    def _map_llm_priority(llm_label: str) -> Optional[PriorityEnum]:
+        """Маппінг LLM priority labels (P1/P2/P3) -> PriorityEnum."""
+        if not llm_label:
+            return None
+        mapping = {
+            "P1": PriorityEnum.P1,
+            "P2": PriorityEnum.P2,
+            "P3": PriorityEnum.P3,
+        }
+        return mapping.get(llm_label.upper())
 
     @staticmethod
     def _map_category(llm_category: Optional[str]) -> Optional[CategoryEnum]:

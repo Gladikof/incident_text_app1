@@ -87,6 +87,8 @@
             <li><a href="tickets.html" class="nav-link">Tickets</a></li>
             <li><a href="board.html" class="nav-link" style="color: var(--primary);">Board</a></li>
             <li><a href="analytics.html" class="nav-link">Analytics</a></li>
+            <li id="ml-logs-nav" style="display: none;"><a href="ml-logs.html" class="nav-link">ML Logs</a></li>
+            <li id="ml-training-nav" style="display: none;"><a href="ml-training.html" class="nav-link">ML Training</a></li>
             <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
             <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
             <li><a href="#" class="nav-link" id="user-name">...</a></li>
@@ -190,6 +192,16 @@
         if (user.role === 'ADMIN') {
             document.getElementById('admin-nav-users').style.display = 'block';
             document.getElementById('admin-nav-departments').style.display = 'block';
+        }
+
+        // Show ML Logs for LEAD and ADMIN
+        if (user.role === 'LEAD' || user.role === 'ADMIN') {
+            document.getElementById('ml-logs-nav').style.display = 'block';
+        }
+
+        // Show ML Training for ADMIN only
+        if (user.role === 'ADMIN') {
+            document.getElementById('ml-training-nav').style.display = 'block';
         }
 
         document.getElementById('logout-btn').addEventListener('click', (e) => {
