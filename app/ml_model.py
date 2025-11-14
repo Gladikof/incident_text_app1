@@ -6,62 +6,91 @@ from deep_translator import GoogleTranslator
 
 
 class MLClassifier:
-    """
-    Обгортка над sklearn-пайплайном для прогнозу пріоритету інциденту.
-    Використовує артефакт artifacts/model_pri_text.joblib
-    (TF-IDF + LogisticRegression, навчений на англомовних тікетах).
-    """
+    """Wrapper around sklearn text classifiers for priority and category."""
 
     def __init__(self):
         self.model = None
+        self.version = "unknown"
+        self.vectorizer = None
+        self.category_model = None
+        self.category_version = "unknown"
+        self.category_vectorizer = None
         base_dir = Path(__file__).resolve().parent.parent
         self.artifacts_dir = base_dir / "artifacts"
         self.model_path = self.artifacts_dir / "model_pri_text.joblib"
-
-        # автопереклад у англійську
+        self.category_model_path = self.artifacts_dir / "model_cat_text.joblib"
         self.translator = GoogleTranslator(source="auto", target="en")
 
     def load(self):
         if not self.model_path.exists():
-            print(f"[ML] WARNING: Файл моделі не знайдено: {self.model_path}")
+            print(f"[ML] WARNING: model artifact not found: {self.model_path}")
             self.model = None
             return
-        self.model = joblib.load(self.model_path)
-        print(f"[ML] SUCCESS: Модель пріоритету завантажено: {self.model_path}")
+
+        priority_payload = joblib.load(self.model_path)
+        self.version = self.model_path.stem
+        if isinstance(priority_payload, dict) and "model" in priority_payload:
+            self.model = priority_payload["model"]
+            self.vectorizer = priority_payload.get("vectorizer")
+        else:
+            self.model = priority_payload
+            self.vectorizer = None
+        print(f"[ML] SUCCESS: priority model loaded: {self.model_path}")
+
+        if self.category_model_path.exists():
+            category_payload = joblib.load(self.category_model_path)
+            self.category_version = self.category_model_path.stem
+            if isinstance(category_payload, dict) and "model" in category_payload:
+                self.category_model = category_payload["model"]
+                self.category_vectorizer = category_payload.get("vectorizer")
+            else:
+                self.category_model = category_payload
+                self.category_vectorizer = None
+            print(f"[ML] SUCCESS: category model loaded: {self.category_model_path}")
+        else:
+            self.category_model = None
+            self.category_vectorizer = None
 
     def _to_english(self, text: str) -> str:
-        """
-        Переклад тексту в англійську. Якщо щось пішло не так – повертаємо оригінал.
-        """
         text = (text or "").strip()
         if not text:
             return text
         try:
             translated = self.translator.translate(text)
-            print(f"[ML] src->en: {text[:60]!r} -> {translated[:60]!r}")
             return translated
-        except Exception as e:
-            print(f"[ML] WARNING: Не вдалося перекласти текст: {e}")
-            return text  # fallback: без перекладу
+        except Exception as exc:  # pragma: no cover
+            print(f"[ML] WARNING: translation failed: {exc}")
+            return text
+
+    def _vectorize(self, text: str, vectorizer):
+        inputs = [text]
+        if vectorizer is not None:
+            return vectorizer.transform(inputs)
+        return inputs
 
     def predict_priority(self, text: str) -> Tuple[str, float]:
-        """
-        Повертає (label, confidence), де:
-        - label: 'high' / 'medium' / 'low',
-        - confidence: ймовірність цього класу (0..1).
-        """
         if self.model is None:
-            raise RuntimeError("ML модель не завантажена.")
+            raise RuntimeError("Priority ML model is not loaded.")
 
         text_en = self._to_english(text)
-        probs = self.model.predict_proba([text_en])[0]
+        probs = self.model.predict_proba(self._vectorize(text_en, self.vectorizer))[0]
         idx = probs.argmax()
         label = self.model.classes_[idx]
         conf = float(probs[idx])
+        return label, conf
 
-        print(f"[ML] predict: {label} ({conf:.3f})")
+    def predict_category(self, text: str) -> Tuple[str, float]:
+        if self.category_model is None:
+            raise RuntimeError("Category ML model is not loaded.")
+
+        text_en = self._to_english(text)
+        probs = self.category_model.predict_proba(
+            self._vectorize(text_en, self.category_vectorizer)
+        )[0]
+        idx = probs.argmax()
+        label = self.category_model.classes_[idx]
+        conf = float(probs[idx])
         return label, conf
 
 
-# Глобальний інстанс, щоб підняти один раз при старті
 ml_model = MLClassifier()

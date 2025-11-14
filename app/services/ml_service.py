@@ -93,7 +93,16 @@ class MLService:
                 priority_ml = None
                 priority_conf = None
 
-        # 3. LLM priority (витягуємо з llm_result)
+        
+        if full_text and getattr(ml_model, "category_model", None) is not None:
+            try:
+                cat_label, cat_conf = ml_model.predict_category(full_text)
+                category_ml = MLService._map_category(cat_label)
+                category_conf = float(cat_conf)
+            except Exception as e:
+                print(f"[ML] Category prediction error: {e}")
+
+# 3. LLM priority (витягуємо з llm_result)
         llm_priority_ml = None
         llm_priority_conf = None
         if llm_result and llm_result.get("priority"):
@@ -128,7 +137,14 @@ class MLService:
         if category_conf is not None and category_conf < settings.ml_conf_threshold_category:
             if not triage_required:  # Якщо ще не потрібен
                 triage_required = True
+            if triage_reason is None:
                 triage_reason = TriageReasonEnum.LOW_CATEGORY_CONF
+
+        # Low priority confidence fallback
+        if priority_conf is not None and priority_conf < settings.ml_conf_threshold_priority:
+            triage_required = True
+            if triage_reason is None:
+                triage_reason = TriageReasonEnum.LOW_PRIORITY_CONF
 
         # 5. Логування результатів
         if ticket_id:

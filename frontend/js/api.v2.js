@@ -2,7 +2,13 @@
  * API Client для Service Desk
  */
 
-const API_BASE = 'http://127.0.0.1:8000';
+const isHttpOrigin = typeof window !== 'undefined'
+    && window.location
+    && window.location.origin
+    && window.location.origin.startsWith('http');
+
+// Use current origin when served over HTTP(S); fallback to localhost for offline previews.
+const API_BASE = isHttpOrigin ? window.location.origin : 'http://127.0.0.1:8000';
 
 class ApiClient {
     constructor() {
@@ -138,6 +144,46 @@ class ApiClient {
         return this.request(`/ml/logs?${params.toString()}`);
     }
 
+    // ML Training
+    async getTrainingStatus() {
+        return this.request('/ml/training/status');
+    }
+
+    async triggerTraining(force = false) {
+        const params = force ? '?force=true' : '';
+        return this.request(`/ml/training/trigger${params}`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    async getModels(limit = 20) {
+        return this.request(`/ml/training/models?limit=${limit}`);
+    }
+
+    async getModel(version) {
+        return this.request(`/ml/training/models/${version}`);
+    }
+
+    async activateModel(version) {
+        return this.request(`/ml/training/models/${version}/activate`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    async getTrainingJobs({ limit = 20, status = null } = {}) {
+        const params = new URLSearchParams({ limit });
+        if (status) {
+            params.append('status', status);
+        }
+        return this.request(`/ml/training/jobs?${params.toString()}`);
+    }
+
+    async getTrainingJob(jobId) {
+        return this.request(`/ml/training/jobs/${jobId}`);
+    }
+
     // Departments
     async getDepartments() {
         return this.request('/departments');
@@ -150,3 +196,5 @@ class ApiClient {
 
 const api = new ApiClient();
 const API_BASE_URL = API_BASE;  // Export for direct use in HTML files
+
+console.debug('[API] Base URL:', API_BASE);

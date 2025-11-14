@@ -115,6 +115,7 @@
     <script>
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         const currentUser = user; // Alias for consistency
+        const isLeadOrAdmin = user && (user.role === 'LEAD' || user.role === 'ADMIN');
         document.getElementById('user-name').textContent = user.email || 'User';
 
         // Show admin links if user is ADMIN
@@ -307,14 +308,46 @@
             `;
 
             const priorityOptions = ['P1', 'P2', 'P3'];
+            const manualPriority = ticket.priority_manual || ticket.priority_ml_suggested || 'P3';
             const priorityDropdown = `
                 <select id="priority-change" class="form-input" style="width: auto; display: inline-block; margin-right: 0.5rem;">
-                    ${priorityOptions.map(p => `<option value="${p}" ${p === ticket.priority_manual ? 'selected' : ''}>${p}</option>`).join('')}
+                    ${priorityOptions.map(p => `<option value="${p}" ${p === manualPriority ? 'selected' : ''}>${p}</option>`).join('')}
                 </select>
                 <button onclick="updatePriority(${ticket.id})" class="btn" style="background: var(--primary);">
                     💾 Зберегти пріоритет
                 </button>
             `;
+
+            const categoryOptions = ['Hardware', 'Software', 'Network', 'Access', 'Other'];
+            const selectedCategory = ticket.category || ticket.category_ml_suggested || 'Other';
+
+            const triageForm = (ticket.triage_required && isLeadOrAdmin) ? `
+                <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
+                    <h4 style="margin: 0 0 1rem 0; font-weight: 600;">📝 Ручна перевірка</h4>
+                    <div style="display: grid; gap: 0.75rem;">
+                        <div>
+                            <label class="form-label" style="display: block; margin-bottom: 0.25rem;">Фінальний пріоритет</label>
+                            <select id="triage-priority-${ticket.id}" class="form-input">
+                                ${priorityOptions.map(p => `<option value="${p}" ${p === manualPriority ? 'selected' : ''}>${p}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" style="display: block; margin-bottom: 0.25rem;">Фінальна категорія</label>
+                            <select id="triage-category-${ticket.id}" class="form-input">
+                                ${categoryOptions.map(c => `<option value="${c}" ${c === selectedCategory ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" style="display: block; margin-bottom: 0.25rem;">Пояснення зміни пріоритету</label>
+                            <textarea id="triage-reason-${ticket.id}" class="form-input" rows="3" placeholder="Обов'язково, якщо змінюєте рішення ML/попередній пріоритет"></textarea>
+                            <small style="color: var(--gray-light); display: block; margin-top: 0.25rem;">Пояснення обов'язкове, якщо новий пріоритет відрізняється від ${manualPriority}.</small>
+                        </div>
+                        <button onclick="resolveTriageTicket(${ticket.id}, '${manualPriority}')" class="btn btn-primary">
+                            ✅ Завершити тріаж
+                        </button>
+                    </div>
+                </div>
+            ` : '';
 
             const modalContent = `
                 <div style="display: grid; gap: 1.5rem;">
@@ -370,6 +403,8 @@
                         ${ticket.triage_note ? `<div style="margin-top: 0.5rem; color: var(--gray-light); font-size: 0.875rem;">${ticket.triage_note}</div>` : ''}
                     </div>
 
+                    ${triageForm}
+
                     <!-- Metadata -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; color: var(--gray-light);">
                         <div>
@@ -397,7 +432,7 @@
                     </div>
 
                     <!-- Manual Assignment (for LEAD/ADMIN) -->
-                    ${(currentUser.role === 'LEAD' || currentUser.role === 'ADMIN') ? `
+                    ${isLeadOrAdmin ? `
                         <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
                             <h4 style="margin: 0 0 1rem 0; font-weight: 600;">👥 Призначити виконавців</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
@@ -484,6 +519,35 @@
                 alert('Пріоритет оновлено!');
                 await openTicketModal(ticketId); // Reload modal
                 loadTickets(); // Reload list
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function resolveTriageTicket(ticketId, currentPriority) {
+            const prioritySelect = document.getElementById(`triage-priority-${ticketId}`);
+            const categorySelect = document.getElementById(`triage-category-${ticketId}`);
+            const reasonInput = document.getElementById(`triage-reason-${ticketId}`);
+
+            if (!prioritySelect || !categorySelect) {
+                alert('Не вдалося знайти форму тріажу. Перезавантажте сторінку.');
+                return;
+            }
+
+            const finalPriority = prioritySelect.value;
+            const finalCategory = categorySelect.value;
+            const reasonValue = reasonInput ? reasonInput.value.trim() : '';
+
+            if (finalPriority !== currentPriority && reasonValue.length < 5) {
+                alert('Будь ласка, коротко поясніть, чому змінюєте пріоритет (мінімум 5 символів).');
+                return;
+            }
+
+            try {
+                await api.resolveTriage(ticketId, finalPriority, finalCategory, reasonValue || null);
+                alert('Тріаж завершено та передано в роботу.');
+                closeModal();
+                loadTickets();
             } catch (error) {
                 alert('Помилка: ' + error.message);
             }

@@ -43,7 +43,24 @@
                     <label for="filter-limit" class="form-label">Limit</label>
                     <input type="number" id="filter-limit" class="form-input" value="50" min="1" max="500">
                 </div>
+                <div>
+                    <label for="filter-feedback-type" class="form-label">Feedback Type</label>
+                    <select id="filter-feedback-type" class="form-input">
+                        <option value="all">Всі</option>
+                        <option value="explicit">Тільки з коректуванням</option>
+                        <option value="implicit">Тільки без коректування</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="filter-mismatch" class="form-label">ML vs LLM</label>
+                    <select id="filter-mismatch" class="form-input">
+                        <option value="all">Всі</option>
+                        <option value="match">Співпадають</option>
+                        <option value="mismatch">Розбіжності</option>
+                    </select>
+                </div>
                 <button id="apply-filters" class="btn btn-primary">🔄 Оновити</button>
+                <button id="export-csv" class="btn btn-secondary">📥 Export CSV</button>
             </div>
         </div>
 
@@ -63,15 +80,16 @@
                         <tr>
                             <th>ID</th>
                             <th>Ticket</th>
-                            <th>ML ➜ LLM ➜ Final</th>
+                            <th>Priority: ML ➜ LLM ➜ Final</th>
                             <th>Впевненість</th>
-                            <th>Причина</th>
-                            <th>Автор</th>
+                            <th>Ensemble</th>
+                            <th>Triage</th>
+                            <th>Feedback</th>
                             <th>Створено</th>
                         </tr>
                     </thead>
                     <tbody id="logs-table">
-                        <tr><td colspan="7" style="text-align: center;">Завантаження...</td></tr>
+                        <tr><td colspan="8" style="text-align: center;">Завантаження...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -113,59 +131,118 @@
                 return;
             }
 
-            const manualOverrides = logs.filter(log => log.priority_feedback_reason);
+            const explicitFeedback = logs.filter(log => log.priority_feedback_reason);
+            const implicitFeedback = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
             const mismatchCount = logs.filter(log => log.triage_reason === 'LLM_PRIORITY_MISMATCH');
-            const latestFeedback = manualOverrides[0]?.priority_feedback_recorded_at;
+            const mlAccurate = logs.filter(log => log.priority_final === log.priority_predicted);
+            const llmAccurate = logs.filter(log => log.priority_final === log.priority_llm_predicted);
+            const latestFeedback = explicitFeedback[0]?.priority_feedback_recorded_at;
+
+            const mlAccuracy = logs.length > 0 ? ((mlAccurate.length / logs.length) * 100).toFixed(1) : 0;
+            const llmAccuracy = logs.length > 0 ? ((llmAccurate.length / logs.length) * 100).toFixed(1) : 0;
 
             const cardStyle = 'background: var(--dark-lighter); border-radius: 12px; padding: 1rem;';
             const valueStyle = 'font-size: 2rem; font-weight: 700;';
             const labelStyle = 'color: var(--gray); margin-top: 0.25rem; font-size: 0.9rem;';
 
             document.getElementById('logs-stats').innerHTML = `
-                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                     <div style="${cardStyle}">
                         <div style="${valueStyle}">${logs.length}</div>
-                        <div style="${labelStyle}">Записів у вибірці</div>
+                        <div style="${labelStyle}">Всього записів</div>
                     </div>
                     <div style="${cardStyle}">
-                        <div style="${valueStyle}">${manualOverrides.length}</div>
-                        <div style="${labelStyle}">Ручних корекцій</div>
+                        <div style="${valueStyle} color: var(--warning);">${explicitFeedback.length}</div>
+                        <div style="${labelStyle}">Явних коректувань</div>
                     </div>
                     <div style="${cardStyle}">
-                        <div style="${valueStyle}">${mismatchCount.length}</div>
-                        <div style="${labelStyle}">LLM vs ML розбіжностей</div>
+                        <div style="${valueStyle} color: var(--success);">${implicitFeedback.length}</div>
+                        <div style="${labelStyle}">Неявних підтверджень</div>
                     </div>
                     <div style="${cardStyle}">
-                        <div style="${valueStyle}">${latestFeedback ? new Date(latestFeedback).toLocaleString() : '—'}</div>
-                        <div style="${labelStyle}">Останній фідбек</div>
+                        <div style="${valueStyle} color: var(--danger);">${mismatchCount.length}</div>
+                        <div style="${labelStyle}">ML/LLM розбіжностей</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle} color: var(--primary);">${mlAccuracy}%</div>
+                        <div style="${labelStyle}">ML точність</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle} color: var(--info);">${llmAccuracy}%</div>
+                        <div style="${labelStyle}">LLM точність</div>
                     </div>
                 </div>
             `;
+        }
+
+        function formatTriageReason(reason) {
+            const reasonMap = {
+                'LOW_PRIORITY_CONF': 'Низька впевненість ML',
+                'LOW_CATEGORY_CONF': 'Низька впевненість категорії',
+                'ML_DISABLED': 'ML вимкнено',
+                'MANUAL_FLAG': 'Ручний тріаж',
+                'LLM_PRIORITY_MISMATCH': 'ML/LLM розбіжність'
+            };
+            return reasonMap[reason] || reason || '—';
         }
 
         async function loadLogs() {
             const limit = parseInt(document.getElementById('filter-limit').value, 10) || 50;
             const ticketIdValue = document.getElementById('filter-ticket-id').value;
             const ticketId = ticketIdValue ? parseInt(ticketIdValue, 10) : null;
+            const feedbackType = document.getElementById('filter-feedback-type').value;
+            const mismatchFilter = document.getElementById('filter-mismatch').value;
 
             const tableBody = document.getElementById('logs-table');
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Завантаження...</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Завантаження...</td></tr>';
 
             try {
-                const logs = await api.getMlLogs({ limit, ticketId });
+                let logs = await api.getMlLogs({ limit: 500, ticketId });
+
+                // Client-side filtering
+                if (feedbackType === 'explicit') {
+                    logs = logs.filter(log => log.priority_feedback_reason);
+                } else if (feedbackType === 'implicit') {
+                    logs = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
+                }
+
+                if (mismatchFilter === 'match') {
+                    logs = logs.filter(log => log.priority_predicted === log.priority_llm_predicted);
+                } else if (mismatchFilter === 'mismatch') {
+                    logs = logs.filter(log => log.priority_predicted !== log.priority_llm_predicted);
+                }
+
+                // Apply limit after filtering
+                logs = logs.slice(0, limit);
+
                 document.getElementById('logs-count').textContent = `${logs.length} записів`;
                 renderStats(logs);
 
                 if (!logs.length) {
-                    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Записів не знайдено.</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Записів не знайдено.</td></tr>';
                     return;
                 }
 
                 tableBody.innerHTML = logs.map(log => {
                     const ticketLink = `<a href="tickets.html#ticket-${log.ticket_id}">INC-${String(log.ticket_id).padStart(4, '0')}</a>`;
                     const summary = `${formatPriority(log.priority_predicted)} ➜ ${formatPriority(log.priority_llm_predicted)} ➜ ${formatPriority(log.priority_final)}`;
-                    const reason = log.priority_feedback_reason ? `<div>${log.priority_feedback_reason}</div>` : '<span class="badge badge-muted">—</span>';
-                    const author = log.priority_feedback_author ? log.priority_feedback_author.email : '—';
+
+                    // Ensemble strategy display
+                    const ensembleInfo = log.ensemble_strategy
+                        ? `<div style="font-size: 0.8rem;">${log.ensemble_strategy}</div>`
+                        : '<span class="badge badge-muted">—</span>';
+
+                    // Triage reason
+                    const triageReason = log.triage_reason
+                        ? `<span class="badge badge-warning" title="${log.triage_reason}">${formatTriageReason(log.triage_reason)}</span>`
+                        : '<span class="badge badge-success">Auto</span>';
+
+                    // Feedback info
+                    const feedbackInfo = log.priority_feedback_reason
+                        ? `<div style="font-size: 0.85rem;">${log.priority_feedback_reason}</div>
+                           <div style="font-size: 0.75rem; color: var(--gray);">${log.priority_feedback_author ? log.priority_feedback_author.email : '—'}</div>`
+                        : '<span class="badge badge-success" title="Неявне підтвердження">✓ Implicit</span>';
+
                     const created = new Date(log.created_at).toLocaleString();
 
                     return `
@@ -173,24 +250,81 @@
                             <td>${log.id}</td>
                             <td>
                                 ${ticketLink}
-                                <div style="font-size: 0.8rem; color: var(--gray);">${log.ticket_title || ''}</div>
+                                <div style="font-size: 0.8rem; color: var(--gray);">${(log.ticket_title || '').substring(0, 40)}${log.ticket_title && log.ticket_title.length > 40 ? '...' : ''}</div>
                             </td>
                             <td>${summary}</td>
-                            <td>${formatConfidence(log.priority_confidence, log.priority_llm_confidence)}</td>
-                            <td>${reason}</td>
-                            <td>${author}</td>
-                            <td>${created}</td>
+                            <td style="font-size: 0.85rem;">${formatConfidence(log.priority_confidence, log.priority_llm_confidence)}</td>
+                            <td>${ensembleInfo}</td>
+                            <td>${triageReason}</td>
+                            <td>${feedbackInfo}</td>
+                            <td style="font-size: 0.85rem;">${created}</td>
                         </tr>
                     `;
                 }).join('');
             } catch (error) {
-                tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger);">Помилка завантаження: ${error.message}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger);">Помилка завантаження: ${error.message}</td></tr>`;
                 document.getElementById('logs-count').textContent = '0 записів';
                 document.getElementById('logs-stats').innerHTML = '<p style="color: var(--danger);">Не вдалося завантажити дані.</p>';
             }
         }
 
+        function exportToCSV() {
+            const limit = parseInt(document.getElementById('filter-limit').value, 10) || 50;
+            const ticketIdValue = document.getElementById('filter-ticket-id').value;
+            const ticketId = ticketIdValue ? parseInt(ticketIdValue, 10) : null;
+
+            api.getMlLogs({ limit: 500, ticketId }).then(logs => {
+                // Apply filters
+                const feedbackType = document.getElementById('filter-feedback-type').value;
+                const mismatchFilter = document.getElementById('filter-mismatch').value;
+
+                if (feedbackType === 'explicit') {
+                    logs = logs.filter(log => log.priority_feedback_reason);
+                } else if (feedbackType === 'implicit') {
+                    logs = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
+                }
+
+                if (mismatchFilter === 'match') {
+                    logs = logs.filter(log => log.priority_predicted === log.priority_llm_predicted);
+                } else if (mismatchFilter === 'mismatch') {
+                    logs = logs.filter(log => log.priority_predicted !== log.priority_llm_predicted);
+                }
+
+                logs = logs.slice(0, limit);
+
+                // Build CSV
+                const headers = ['ID', 'Ticket ID', 'Title', 'ML Priority', 'ML Confidence', 'LLM Priority', 'LLM Confidence', 'Final Priority', 'Ensemble Strategy', 'Triage Reason', 'Feedback Reason', 'Feedback Author', 'Created At'];
+                const rows = logs.map(log => [
+                    log.id,
+                    log.ticket_id,
+                    `"${(log.ticket_title || '').replace(/"/g, '""')}"`,
+                    log.priority_predicted || '',
+                    log.priority_confidence !== null ? log.priority_confidence.toFixed(3) : '',
+                    log.priority_llm_predicted || '',
+                    log.priority_llm_confidence !== null ? log.priority_llm_confidence.toFixed(3) : '',
+                    log.priority_final || '',
+                    log.ensemble_strategy || '',
+                    log.triage_reason || '',
+                    `"${(log.priority_feedback_reason || '').replace(/"/g, '""')}"`,
+                    log.priority_feedback_author ? log.priority_feedback_author.email : '',
+                    new Date(log.created_at).toISOString()
+                ]);
+
+                const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+
+                // Download
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `ml_logs_${new Date().toISOString().split('T')[0]}.csv`;
+                link.click();
+            }).catch(error => {
+                alert(`Export failed: ${error.message}`);
+            });
+        }
+
         document.getElementById('apply-filters').addEventListener('click', loadLogs);
+        document.getElementById('export-csv').addEventListener('click', exportToCSV);
         document.getElementById('logout-btn').addEventListener('click', (event) => {
             event.preventDefault();
             api.logout();

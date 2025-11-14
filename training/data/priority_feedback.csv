@@ -1,0 +1,3 @@
+ticket_id,created_at,updated_at,full_text,priority_ml,priority_ml_confidence,priority_llm,priority_llm_confidence,priority_final,priority_feedback_previous,priority_feedback_reason,priority_feedback_author,priority_feedback_recorded_at,triage_reason
+11,2025-11-14T11:24:12.675021,2025-11-14T22:10:06.834068,"Switch configuration issue
+Network switch VLAN configuration error. Routing not working.",P1,0.48577957713285813,P1,0.8,P1,P3,аіваіаіаі,admin@example.com,2025-11-14T22:10:06.836570,LOW_PRIORITY_CONF

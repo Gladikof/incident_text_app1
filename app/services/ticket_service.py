@@ -15,10 +15,12 @@ from app.core.enums import (
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.models.settings import SystemSettings
+from app.models.ml_log import MLPredictionLog
 from app.schemas.ticket import TicketCreate, TicketUpdate
 from app.services.ml_service import ml_service
 from app.services.assignee_service import assignee_service
 from app.services.smart_assignment_service import smart_assignment_service
+from app.services.training_feedback_service import training_feedback_service
 import json
 
 

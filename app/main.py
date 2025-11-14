@@ -138,7 +138,7 @@ def root_redirect():
     """
     Редірект з кореня на login.
     """
-    return RedirectResponse(url="/ui_llm_static/login.html")
+    return RedirectResponse(url="/login.html")
 
 
 @app.get("/ui_llm")
@@ -146,5 +146,14 @@ def ui_llm():
     """
     Legacy: редірект на старий UI.
     """
-    return RedirectResponse(url="/ui_llm_static/index.html")
+    return RedirectResponse(url="/index.html")
+
+
+# Монтуємо frontend в корінь для прямого доступу до HTML файлів
+# ВАЖЛИВО: Це має бути ОСТАННІМ mount, щоб API endpoints мали пріоритет
+app.mount(
+    "/",
+    StaticFiles(directory=FRONTEND_DIR, html=True),
+    name="frontend",
+)
 

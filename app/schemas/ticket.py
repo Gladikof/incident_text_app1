@@ -82,10 +82,10 @@ class TicketAssignMultiple(BaseModel):
 
 
 class TicketTriageResolve(BaseModel):
-    """Розв'язання тріажу (LEAD)"""
-    category: CategoryEnum
-    priority_manual: PriorityEnum
-    assigned_to_user_id: Optional[int] = None
+    """????? ?? ?????????? ?????? (LEAD/ADMIN)"""
+    priority_final: PriorityEnum
+    category_final: CategoryEnum
+    priority_change_reason: Optional[str] = None
 
 
 class TicketListItem(BaseModel):
