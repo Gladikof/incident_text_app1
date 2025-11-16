@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.core.enums import PriorityEnum, TriageReasonEnum
+from app.core.enums import PriorityEnum, CategoryEnum, TriageReasonEnum
 from app.schemas.ticket import UserBrief
 
 
@@ -25,6 +25,19 @@ class MLPredictionLogOut(BaseModel):
     priority_feedback_author: Optional[UserBrief] = None
     priority_feedback_recorded_at: Optional[datetime] = None
     triage_reason: Optional[TriageReasonEnum] = None
+    category_predicted: Optional[CategoryEnum] = None
+    category_confidence: Optional[float] = None
+    category_llm_predicted: Optional[CategoryEnum] = None
+    category_llm_confidence: Optional[float] = None
+    category_final: Optional[CategoryEnum] = None
+    ensemble_confidence: Optional[float] = None
+    ensemble_strategy: Optional[str] = None
+    ensemble_reasoning: Optional[str] = None
+    ensemble_category: Optional[CategoryEnum] = None
+    ensemble_category_confidence: Optional[float] = None
+    ensemble_category_strategy: Optional[str] = None
+    ensemble_category_reasoning: Optional[str] = None
+    input_text: Optional[str] = None
 
     class Config:
         from_attributes = True

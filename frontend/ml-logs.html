@@ -19,59 +19,65 @@
             <li id="admin-nav-users" style="display: none;"><a href="admin-users.html" class="nav-link">Users</a></li>
             <li id="admin-nav-departments" style="display: none;"><a href="admin-departments.html" class="nav-link">Departments</a></li>
             <li><a href="#" class="nav-link" id="user-name">Loading...</a></li>
-            <li><a href="#" class="nav-link" id="logout-btn">Вихід</a></li>
+            <li><a href="#" class="nav-link" id="logout-btn">Вийти</a></li>
         </ul>
     </nav>
 
     <div class="container">
-        <h1 style="margin-bottom: 1.5rem;">ML / LLM Logs</h1>
+        <h1 style="margin-bottom: 1.5rem;">Журнали ML / LLM</h1>
 
         <div class="alert alert-info" style="margin-bottom: 1.5rem;">
-            <strong>Навчальна вибірка:</strong> кожна ручна зміна пріоритету автоматично потрапляє до
-            <code>training/data/priority_feedback.csv</code>. Аналітики можуть завантажити цей файл для
-            повторного тренування ML та актуалізації підказок LLM.
+            <strong>Нагадування:</strong> ця сторінка читає дані з таблиці <code>training/data/priority_feedback.csv</code> та журналів ML. Вона допомагає показати методику, пояснити ensemble та відстежити ручні правки.
         </div>
 
         <div class="card" style="margin-bottom: 1.5rem;">
             <h2 style="margin-bottom: 1rem;">Фільтри</h2>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end;">
                 <div>
-                    <label for="filter-ticket-id" class="form-label">Ticket ID</label>
-                    <input type="number" id="filter-ticket-id" class="form-input" placeholder="Наприклад, 42">
+                    <label class="form-label" for="filter-ticket-id">Ticket ID (точний)</label>
+                    <input type="number" id="filter-ticket-id" class="form-input" placeholder="наприклад, 42">
                 </div>
                 <div>
-                    <label for="filter-limit" class="form-label">Limit</label>
+                    <label class="form-label" for="filter-ticket-from">Ticket ID (від)</label>
+                    <input type="number" id="filter-ticket-from" class="form-input" placeholder="100">
+                </div>
+                <div>
+                    <label class="form-label" for="filter-ticket-to">Ticket ID (до)</label>
+                    <input type="number" id="filter-ticket-to" class="form-input" placeholder="150">
+                </div>
+                <div>
+                    <label class="form-label" for="filter-limit">Ліміт</label>
                     <input type="number" id="filter-limit" class="form-input" value="50" min="1" max="500">
                 </div>
                 <div>
-                    <label for="filter-feedback-type" class="form-label">Feedback Type</label>
+                    <label class="form-label" for="filter-feedback-type">Тип feedback</label>
                     <select id="filter-feedback-type" class="form-input">
-                        <option value="all">Всі</option>
-                        <option value="explicit">Тільки з коректуванням</option>
-                        <option value="implicit">Тільки без коректування</option>
+                        <option value="all">Усі</option>
+                        <option value="explicit">З коментарем</option>
+                        <option value="implicit">Автоматично (implicit)</option>
                     </select>
                 </div>
                 <div>
-                    <label for="filter-mismatch" class="form-label">ML vs LLM</label>
+                    <label class="form-label" for="filter-mismatch">ML vs LLM</label>
                     <select id="filter-mismatch" class="form-input">
-                        <option value="all">Всі</option>
-                        <option value="match">Співпадають</option>
-                        <option value="mismatch">Розбіжності</option>
+                        <option value="all">Усі</option>
+                        <option value="match">Співпадіння</option>
+                        <option value="mismatch">Розходження</option>
                     </select>
                 </div>
-                <button id="apply-filters" class="btn btn-primary">🔄 Оновити</button>
-                <button id="export-csv" class="btn btn-secondary">📥 Export CSV</button>
+                <button id="apply-filters" class="btn btn-primary">Застосувати</button>
+                <button id="export-csv" class="btn btn-secondary">Export CSV</button>
             </div>
         </div>
 
         <div class="card" style="margin-bottom: 1.5rem;">
-            <h2 style="margin-bottom: 1rem;">Статистика</h2>
+            <h2 style="margin-bottom: 1rem;">Аналітика</h2>
             <div id="logs-stats">Завантаження...</div>
         </div>
 
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h2>Останні записи</h2>
+                <h2>Журнали передбачень</h2>
                 <span id="logs-count" class="badge badge-status">0 записів</span>
             </div>
             <div class="table-responsive">
@@ -80,16 +86,18 @@
                         <tr>
                             <th>ID</th>
                             <th>Ticket</th>
-                            <th>Priority: ML ➜ LLM ➜ Final</th>
+                            <th>Priority: ML > LLM > Final</th>
                             <th>Впевненість</th>
+                            <th>Category: ML > LLM > Final</th>
                             <th>Ensemble</th>
                             <th>Triage</th>
                             <th>Feedback</th>
+                            <th>Input</th>
                             <th>Створено</th>
                         </tr>
                     </thead>
                     <tbody id="logs-table">
-                        <tr><td colspan="8" style="text-align: center;">Завантаження...</td></tr>
+                        <tr><td colspan="10" style="text-align: center;">Завантаження...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -100,6 +108,7 @@
     <script src="js/auth-guard.js"></script>
     <script>
         let currentUser = null;
+        const loadingRow = '<tr><td colspan="10" style="text-align: center;">Завантаження...</td></tr>';
 
         async function loadCurrentUser() {
             currentUser = await api.getMe();
@@ -107,72 +116,37 @@
             if (currentUser.role === 'ADMIN') {
                 document.getElementById('admin-nav-users').style.display = 'block';
                 document.getElementById('admin-nav-departments').style.display = 'block';
-            }
-
-            // Show ML Training for ADMIN only
-            if (currentUser.role === 'ADMIN') {
                 document.getElementById('ml-training-nav').style.display = 'block';
             }
         }
 
+        function escapeHtml(raw) {
+            if (raw === null || raw === undefined) return '';
+            return raw
+                .toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function formatPriority(p) {
-            return p ? `<span class="badge badge-priority">${p}</span>` : '<span class="badge badge-muted">—</span>';
+            return p ? `<span class="badge badge-priority">${p}</span>` : '<span class="badge badge-muted">-</span>';
+        }
+
+        function formatCategory(c) {
+            return c ? `<span class="badge" style="background: #0f766e; color: white;">${c}</span>` : '<span class="badge badge-muted">-</span>';
         }
 
         function formatConfidence(ml, llm) {
-            const mlText = ml !== null && ml !== undefined ? (ml * 100).toFixed(0) + '%' : '—';
-            const llmText = llm !== null && llm !== undefined ? (llm * 100).toFixed(0) + '%' : '—';
+            const mlText = ml !== null && ml !== undefined ? (ml * 100).toFixed(0) + '%' : '-';
+            const llmText = llm !== null && llm !== undefined ? (llm * 100).toFixed(0) + '%' : '-';
             return `<div>ML: ${mlText}</div><div>LLM: ${llmText}</div>`;
         }
 
-        function renderStats(logs) {
-            if (!logs.length) {
-                document.getElementById('logs-stats').innerHTML = '<p>Записів не знайдено.</p>';
-                return;
-            }
-
-            const explicitFeedback = logs.filter(log => log.priority_feedback_reason);
-            const implicitFeedback = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
-            const mismatchCount = logs.filter(log => log.triage_reason === 'LLM_PRIORITY_MISMATCH');
-            const mlAccurate = logs.filter(log => log.priority_final === log.priority_predicted);
-            const llmAccurate = logs.filter(log => log.priority_final === log.priority_llm_predicted);
-            const latestFeedback = explicitFeedback[0]?.priority_feedback_recorded_at;
-
-            const mlAccuracy = logs.length > 0 ? ((mlAccurate.length / logs.length) * 100).toFixed(1) : 0;
-            const llmAccuracy = logs.length > 0 ? ((llmAccurate.length / logs.length) * 100).toFixed(1) : 0;
-
-            const cardStyle = 'background: var(--dark-lighter); border-radius: 12px; padding: 1rem;';
-            const valueStyle = 'font-size: 2rem; font-weight: 700;';
-            const labelStyle = 'color: var(--gray); margin-top: 0.25rem; font-size: 0.9rem;';
-
-            document.getElementById('logs-stats').innerHTML = `
-                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle}">${logs.length}</div>
-                        <div style="${labelStyle}">Всього записів</div>
-                    </div>
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle} color: var(--warning);">${explicitFeedback.length}</div>
-                        <div style="${labelStyle}">Явних коректувань</div>
-                    </div>
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle} color: var(--success);">${implicitFeedback.length}</div>
-                        <div style="${labelStyle}">Неявних підтверджень</div>
-                    </div>
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle} color: var(--danger);">${mismatchCount.length}</div>
-                        <div style="${labelStyle}">ML/LLM розбіжностей</div>
-                    </div>
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle} color: var(--primary);">${mlAccuracy}%</div>
-                        <div style="${labelStyle}">ML точність</div>
-                    </div>
-                    <div style="${cardStyle}">
-                        <div style="${valueStyle} color: var(--info);">${llmAccuracy}%</div>
-                        <div style="${labelStyle}">LLM точність</div>
-                    </div>
-                </div>
-            `;
+        function formatPercent(value) {
+            return value !== null && value !== undefined ? `${(value * 100).toFixed(0)}%` : '-';
         }
 
         function formatTriageReason(reason) {
@@ -180,147 +154,263 @@
                 'LOW_PRIORITY_CONF': 'Низька впевненість ML',
                 'LOW_CATEGORY_CONF': 'Низька впевненість категорії',
                 'ML_DISABLED': 'ML вимкнено',
-                'MANUAL_FLAG': 'Ручний тріаж',
+                'MANUAL_FLAG': 'Manual review',
                 'LLM_PRIORITY_MISMATCH': 'ML/LLM розбіжність'
             };
-            return reasonMap[reason] || reason || '—';
+            return reasonMap[reason] || reason || '-';
+        }
+
+        function renderStats(logs) {
+            const explicit = logs.filter(log => log.priority_feedback_reason);
+            const implicit = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
+            const mismatches = logs.filter(log => log.priority_predicted !== log.priority_llm_predicted);
+            const mlAccurate = logs.filter(log => log.priority_predicted === log.priority_final);
+            const llmAccurate = logs.filter(log => log.priority_llm_predicted === log.priority_final);
+
+            const mlAccuracy = logs.length ? ((mlAccurate.length / logs.length) * 100).toFixed(1) : '0.0';
+            const llmAccuracy = logs.length ? ((llmAccurate.length / logs.length) * 100).toFixed(1) : '0.0';
+
+            const cardStyle = 'background: var(--dark-lighter); border-radius: 12px; padding: 1rem;';
+            const valueStyle = 'font-size: 2rem; font-weight: 700;';
+            const labelStyle = 'color: var(--gray); margin-top: 0.25rem; font-size: 0.9rem;';
+
+            document.getElementById('logs-stats').innerHTML = `
+                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}">${logs.length}</div>
+                        <div style="${labelStyle}">Записів у вибірці</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}; color: var(--warning);">${explicit.length}</div>
+                        <div style="${labelStyle}">Ручні правки</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}; color: var(--success);">${implicit.length}</div>
+                        <div style="${labelStyle}">Автоприйняття</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}; color: var(--danger);">${mismatches.length}</div>
+                        <div style="${labelStyle}">ML vs LLM розбіжності</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}; color: var(--primary);">${mlAccuracy}%</div>
+                        <div style="${labelStyle}">Точність ML</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${valueStyle}; color: var(--info);">${llmAccuracy}%</div>
+                        <div style="${labelStyle}">Точність LLM</div>
+                    </div>
+                </div>`;
+        }
+
+        function renderRow(log) {
+            const ticketLink = `<a href="tickets.html#ticket-${log.ticket_id}">INC-${String(log.ticket_id).padStart(4, '0')}</a>`;
+            const title = log.ticket_title ? escapeHtml(log.ticket_title) : '';
+            const previewSource = log.input_text || log.ticket_description || '';
+            const previewShort = previewSource ? escapeHtml(previewSource.substring(0, 140)) + (previewSource.length > 140 ? '…' : '') : '';
+            const ticketMeta = `
+                ${title ? `<div style="font-size: 0.8rem; color: var(--gray);">${title}</div>` : ''}
+                ${previewShort ? `<div style="font-size: 0.75rem; color: var(--gray); margin-top: 0.25rem;">${previewShort}</div>` : ''}
+                ${log.model_version ? `<div style="font-size: 0.75rem; color: var(--gray); margin-top: 0.25rem;">Model: ${escapeHtml(log.model_version)}</div>` : ''}
+            `;
+
+            const prioritySummary = `${formatPriority(log.priority_predicted)} > ${formatPriority(log.priority_llm_predicted)} > ${formatPriority(log.priority_final)}`;
+            const categorySummary = `${formatCategory(log.category_predicted)} > ${formatCategory(log.category_llm_predicted)} > ${formatCategory(log.category_final)}`;
+
+            const ensemblePriorityInfo = log.ensemble_strategy
+                ? `<div><strong>${escapeHtml(log.ensemble_strategy)}</strong></div>
+                   <div style="font-size: 0.8rem; color: var(--gray);">Conf: ${formatPercent(log.ensemble_confidence)}</div>
+                   ${log.ensemble_reasoning ? `<div style="font-size: 0.75rem; color: var(--gray);">${escapeHtml(log.ensemble_reasoning)}</div>` : ''}`
+                : '<span class="badge badge-muted">-</span>';
+
+            const ensembleCategoryInfo = log.ensemble_category
+                ? `<div style="margin-top: 0.5rem;">
+                        <strong>Категорія</strong>
+                        <div style="font-size: 0.8rem; color: var(--gray);">
+                            ${escapeHtml(log.ensemble_category)} (${formatPercent(log.ensemble_category_confidence)})
+                        </div>
+                        ${log.ensemble_category_strategy ? `<div style="font-size: 0.75rem; color: var(--gray);">${escapeHtml(log.ensemble_category_strategy)}</div>` : ''}
+                        ${log.ensemble_category_reasoning ? `<div style="font-size: 0.75rem; color: var(--gray);">${escapeHtml(log.ensemble_category_reasoning)}</div>` : ''}
+                   </div>`
+                : '';
+
+            const triageBadge = log.triage_reason
+                ? `<span class="badge badge-warning" title="${escapeHtml(log.triage_reason)}">${formatTriageReason(log.triage_reason)}</span>`
+                : '<span class="badge badge-success">Auto</span>';
+
+            const feedbackInfo = log.priority_feedback_reason
+                ? `<div style="font-size: 0.9rem;">${escapeHtml(log.priority_feedback_reason)}</div>
+                   <div style="font-size: 0.75rem; color: var(--gray);">
+                        ${log.priority_feedback_author ? escapeHtml(log.priority_feedback_author.full_name || log.priority_feedback_author.email || '') : ''}
+                   </div>
+                   ${log.priority_feedback_recorded_at ? `<div style="font-size: 0.75rem; color: var(--gray);">${new Date(log.priority_feedback_recorded_at).toLocaleString('uk-UA')}</div>` : ''}`
+                : '<span class="badge badge-success" title="Implicit">Auto</span>';
+
+            const textCell = previewSource
+                ? `<details style="font-size: 0.85rem;">
+                        <summary style="cursor: pointer;">Переглянути</summary>
+                        <div style="white-space: pre-wrap; color: var(--gray); margin-top: 0.25rem;">${escapeHtml(previewSource)}</div>
+                   </details>`
+                : '<span class="badge badge-muted">-</span>';
+
+            const created = new Date(log.created_at).toLocaleString('uk-UA');
+
+            return `
+                <tr>
+                    <td>${log.id}</td>
+                    <td>
+                        ${ticketLink}
+                        ${ticketMeta}
+                    </td>
+                    <td>${prioritySummary}</td>
+                    <td style="font-size: 0.85rem;">${formatConfidence(log.priority_confidence, log.priority_llm_confidence)}</td>
+                    <td>
+                        ${categorySummary}
+                        <div style="font-size: 0.75rem; color: var(--gray); margin-top: 0.25rem;">
+                            ${formatConfidence(log.category_confidence, log.category_llm_confidence)}
+                        </div>
+                    </td>
+                    <td>${ensemblePriorityInfo}${ensembleCategoryInfo}</td>
+                    <td>${triageBadge}</td>
+                    <td>${feedbackInfo}</td>
+                    <td>${textCell}</td>
+                    <td style="font-size: 0.85rem;">${created}</td>
+                </tr>`;
+        }
+
+        function getLimitValue() {
+            const raw = document.getElementById('filter-limit').value || '50';
+            const parsed = parseInt(raw, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
         }
 
         async function loadLogs() {
-            const limit = parseInt(document.getElementById('filter-limit').value, 10) || 50;
+            const limit = getLimitValue();
             const ticketIdValue = document.getElementById('filter-ticket-id').value;
+            const ticketFromValue = document.getElementById('filter-ticket-from').value;
+            const ticketToValue = document.getElementById('filter-ticket-to').value;
             const ticketId = ticketIdValue ? parseInt(ticketIdValue, 10) : null;
+            const ticketFrom = ticketFromValue ? parseInt(ticketFromValue, 10) : null;
+            const ticketTo = ticketToValue ? parseInt(ticketToValue, 10) : null;
             const feedbackType = document.getElementById('filter-feedback-type').value;
             const mismatchFilter = document.getElementById('filter-mismatch').value;
 
             const tableBody = document.getElementById('logs-table');
-            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Завантаження...</td></tr>';
+            tableBody.innerHTML = loadingRow;
 
             try {
-                let logs = await api.getMlLogs({ limit: 500, ticketId });
-
-                // Client-side filtering
-                if (feedbackType === 'explicit') {
-                    logs = logs.filter(log => log.priority_feedback_reason);
-                } else if (feedbackType === 'implicit') {
-                    logs = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
-                }
-
-                if (mismatchFilter === 'match') {
-                    logs = logs.filter(log => log.priority_predicted === log.priority_llm_predicted);
-                } else if (mismatchFilter === 'mismatch') {
-                    logs = logs.filter(log => log.priority_predicted !== log.priority_llm_predicted);
-                }
-
-                // Apply limit after filtering
-                logs = logs.slice(0, limit);
+                const logs = await api.getMlLogs({
+                    limit,
+                    ticketId,
+                    ticketFrom,
+                    ticketTo,
+                    feedbackType,
+                    priorityPair: mismatchFilter,
+                });
 
                 document.getElementById('logs-count').textContent = `${logs.length} записів`;
                 renderStats(logs);
 
                 if (!logs.length) {
-                    tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Записів не знайдено.</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="10" style="text-align: center;">Немає записів.</td></tr>';
                     return;
                 }
 
-                tableBody.innerHTML = logs.map(log => {
-                    const ticketLink = `<a href="tickets.html#ticket-${log.ticket_id}">INC-${String(log.ticket_id).padStart(4, '0')}</a>`;
-                    const summary = `${formatPriority(log.priority_predicted)} ➜ ${formatPriority(log.priority_llm_predicted)} ➜ ${formatPriority(log.priority_final)}`;
-
-                    // Ensemble strategy display
-                    const ensembleInfo = log.ensemble_strategy
-                        ? `<div style="font-size: 0.8rem;">${log.ensemble_strategy}</div>`
-                        : '<span class="badge badge-muted">—</span>';
-
-                    // Triage reason
-                    const triageReason = log.triage_reason
-                        ? `<span class="badge badge-warning" title="${log.triage_reason}">${formatTriageReason(log.triage_reason)}</span>`
-                        : '<span class="badge badge-success">Auto</span>';
-
-                    // Feedback info
-                    const feedbackInfo = log.priority_feedback_reason
-                        ? `<div style="font-size: 0.85rem;">${log.priority_feedback_reason}</div>
-                           <div style="font-size: 0.75rem; color: var(--gray);">${log.priority_feedback_author ? log.priority_feedback_author.email : '—'}</div>`
-                        : '<span class="badge badge-success" title="Неявне підтвердження">✓ Implicit</span>';
-
-                    const created = new Date(log.created_at).toLocaleString();
-
-                    return `
-                        <tr>
-                            <td>${log.id}</td>
-                            <td>
-                                ${ticketLink}
-                                <div style="font-size: 0.8rem; color: var(--gray);">${(log.ticket_title || '').substring(0, 40)}${log.ticket_title && log.ticket_title.length > 40 ? '...' : ''}</div>
-                            </td>
-                            <td>${summary}</td>
-                            <td style="font-size: 0.85rem;">${formatConfidence(log.priority_confidence, log.priority_llm_confidence)}</td>
-                            <td>${ensembleInfo}</td>
-                            <td>${triageReason}</td>
-                            <td>${feedbackInfo}</td>
-                            <td style="font-size: 0.85rem;">${created}</td>
-                        </tr>
-                    `;
-                }).join('');
+                tableBody.innerHTML = logs.map(renderRow).join('');
             } catch (error) {
-                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger);">Помилка завантаження: ${error.message}</td></tr>`;
-                document.getElementById('logs-count').textContent = '0 записів';
-                document.getElementById('logs-stats').innerHTML = '<p style="color: var(--danger);">Не вдалося завантажити дані.</p>';
+                console.error('ML log load failed:', error);
+                tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--danger);">${escapeHtml(error.message || 'Помилка завантаження')}</td></tr>`;
             }
         }
 
-        function exportToCSV() {
-            const limit = parseInt(document.getElementById('filter-limit').value, 10) || 50;
+        async function exportToCSV() {
+            const limit = getLimitValue();
             const ticketIdValue = document.getElementById('filter-ticket-id').value;
+            const ticketFromValue = document.getElementById('filter-ticket-from').value;
+            const ticketToValue = document.getElementById('filter-ticket-to').value;
             const ticketId = ticketIdValue ? parseInt(ticketIdValue, 10) : null;
+            const ticketFrom = ticketFromValue ? parseInt(ticketFromValue, 10) : null;
+            const ticketTo = ticketToValue ? parseInt(ticketToValue, 10) : null;
+            const feedbackType = document.getElementById('filter-feedback-type').value;
+            const mismatchFilter = document.getElementById('filter-mismatch').value;
 
-            api.getMlLogs({ limit: 500, ticketId }).then(logs => {
-                // Apply filters
-                const feedbackType = document.getElementById('filter-feedback-type').value;
-                const mismatchFilter = document.getElementById('filter-mismatch').value;
+            let exportLimit = Math.min(500, Math.max(limit, 1));
+            if (!ticketId && ticketFrom !== null && ticketTo !== null && ticketTo >= ticketFrom) {
+                const span = ticketTo - ticketFrom + 1;
+                exportLimit = Math.min(500, Math.max(exportLimit, span));
+            }
 
-                if (feedbackType === 'explicit') {
-                    logs = logs.filter(log => log.priority_feedback_reason);
-                } else if (feedbackType === 'implicit') {
-                    logs = logs.filter(log => !log.priority_feedback_reason && log.priority_final === log.priority_predicted);
+            try {
+                const logs = await api.getMlLogs({
+                    limit: exportLimit,
+                    ticketId,
+                    ticketFrom,
+                    ticketTo,
+                    feedbackType,
+                    priorityPair: mismatchFilter,
+                });
+
+                if (!logs.length) {
+                    alert('Немає даних для експорту');
+                    return;
                 }
 
-                if (mismatchFilter === 'match') {
-                    logs = logs.filter(log => log.priority_predicted === log.priority_llm_predicted);
-                } else if (mismatchFilter === 'mismatch') {
-                    logs = logs.filter(log => log.priority_predicted !== log.priority_llm_predicted);
-                }
+                const headers = [
+                    'Log ID','Ticket ID','Title','Description','Input Text',
+                    'Model Version','Priority ML','Priority ML conf','Priority LLM','Priority LLM conf','Priority Final',
+                    'Category ML','Category ML conf','Category LLM','Category LLM conf','Category Final',
+                    'Ensemble Strategy','Ensemble Conf','Ensemble Reasoning',
+                    'Ensemble Category','Ensemble Cat Conf','Ensemble Cat Strategy','Ensemble Cat Reasoning',
+                    'Triage Reason','Feedback Previous','Feedback','Feedback Author','Feedback Recorded',
+                    'Created At'
+                ];
 
-                logs = logs.slice(0, limit);
-
-                // Build CSV
-                const headers = ['ID', 'Ticket ID', 'Title', 'ML Priority', 'ML Confidence', 'LLM Priority', 'LLM Confidence', 'Final Priority', 'Ensemble Strategy', 'Triage Reason', 'Feedback Reason', 'Feedback Author', 'Created At'];
                 const rows = logs.map(log => [
                     log.id,
                     log.ticket_id,
-                    `"${(log.ticket_title || '').replace(/"/g, '""')}"`,
+                    `"${escapeCsv(log.ticket_title)}"`,
+                    `"${escapeCsv(log.ticket_description)}"`,
+                    `"${escapeCsv(log.input_text)}"`,
+                    `"${escapeCsv(log.model_version)}"`,
                     log.priority_predicted || '',
-                    log.priority_confidence !== null ? log.priority_confidence.toFixed(3) : '',
+                    log.priority_confidence ?? '',
                     log.priority_llm_predicted || '',
-                    log.priority_llm_confidence !== null ? log.priority_llm_confidence.toFixed(3) : '',
+                    log.priority_llm_confidence ?? '',
                     log.priority_final || '',
-                    log.ensemble_strategy || '',
+                    log.category_predicted || '',
+                    log.category_confidence ?? '',
+                    log.category_llm_predicted || '',
+                    log.category_llm_confidence ?? '',
+                    log.category_final || '',
+                    `"${escapeCsv(log.ensemble_strategy)}"`,
+                    log.ensemble_confidence ?? '',
+                    `"${escapeCsv(log.ensemble_reasoning)}"`,
+                    `"${escapeCsv(log.ensemble_category)}"`,
+                    log.ensemble_category_confidence ?? '',
+                    `"${escapeCsv(log.ensemble_category_strategy)}"`,
+                    `"${escapeCsv(log.ensemble_category_reasoning)}"`,
                     log.triage_reason || '',
-                    `"${(log.priority_feedback_reason || '').replace(/"/g, '""')}"`,
-                    log.priority_feedback_author ? log.priority_feedback_author.email : '',
-                    new Date(log.created_at).toISOString()
+                    log.priority_feedback_previous || '',
+                    `"${escapeCsv(log.priority_feedback_reason)}"`,
+                    log.priority_feedback_author ? `"${escapeCsv(log.priority_feedback_author.full_name || log.priority_feedback_author.email || '')}"` : '',
+                    log.priority_feedback_recorded_at ? new Date(log.priority_feedback_recorded_at).toISOString() : '',
+                    new Date(log.created_at).toISOString(),
                 ]);
 
                 const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-
-                // Download
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = `ml_logs_${new Date().toISOString().split('T')[0]}.csv`;
                 link.click();
-            }).catch(error => {
+            } catch (error) {
                 alert(`Export failed: ${error.message}`);
-            });
+            }
+        }
+
+        function escapeCsv(value) {
+            if (value === null || value === undefined) return '';
+            return value.toString().replace(/"/g, '""');
         }
 
         document.getElementById('apply-filters').addEventListener('click', loadLogs);

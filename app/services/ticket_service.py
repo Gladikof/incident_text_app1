@@ -2,7 +2,7 @@
 Ticket Service - бізнес-логіка роботи з тікетами.
 Містить логіку створення, оновлення, тріажу та статусів.
 """
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ from app.services.assignee_service import assignee_service
 from app.services.smart_assignment_service import smart_assignment_service
 from app.services.training_feedback_service import training_feedback_service
 import json
+from app.database import SessionLocal
 
 
 class TicketService:
@@ -66,6 +67,7 @@ class TicketService:
             priority_manual=ticket_data.priority_manual or PriorityEnum.P3,
             status=StatusEnum.NEW,
             triage_required=False,
+            llm_enrichment_required=ticket_data.skip_llm,
         )
 
         db.add(ticket)
@@ -73,27 +75,11 @@ class TicketService:
 
         # 2. ML класифікація (якщо ввімкнено)
         if settings.feature_ml_enabled:
-            ml_result = ml_service.predict_ticket(
-                title=ticket.title,
-                description=ticket.description,
+            ml_result = TicketService._run_ml_pipeline(
+                ticket=ticket,
                 db=db,
-                ticket_id=ticket.id,
+                skip_llm=ticket_data.skip_llm,
             )
-
-            # Заповнюємо ML поля
-            ticket.priority_ml_suggested = ml_result["priority_ml_suggested"]
-            ticket.priority_ml_confidence = ml_result["priority_ml_confidence"]
-            ticket.category_ml_suggested = ml_result["category_ml_suggested"]
-            ticket.category_ml_confidence = ml_result["category_ml_confidence"]
-            ticket.ml_model_version = ml_result["ml_model_version"]
-            ticket.triage_required = ml_result["triage_required"]
-            ticket.triage_reason = ml_result["triage_reason"]
-
-            # Зберігаємо ensemble рішення (комбінація ML + LLM)
-            ticket.priority_ensemble = ml_result.get("priority_ensemble")
-            ticket.ensemble_confidence = ml_result.get("ensemble_confidence")
-            ticket.ensemble_strategy = ml_result.get("ensemble_strategy")
-            ticket.ensemble_reasoning = ml_result.get("ensemble_reasoning")
 
             # 3. Логіка AUTO_APPLY режиму
             if settings.ml_mode == MLModeEnum.AUTO_APPLY and not ticket.triage_required:
@@ -102,12 +88,22 @@ class TicketService:
                     ticket.priority_manual = ticket.priority_ensemble  # ✅ ВИПРАВЛЕНО: використовуємо ensemble
                     ticket.priority_accepted = True
 
-                if ticket.category_ml_suggested:
-                    ticket.category = ticket.category_ml_suggested
+                final_category = (
+                    ticket.category_ensemble
+                    or ticket.category_ml_suggested
+                    or ticket.category_llm_suggested
+                )
+                if final_category:
+                    ticket.category = final_category
                     ticket.category_accepted = True
 
             # 3.5. ⭐ SMART ASSIGNMENT - інтелектуальний вибір виконавця ⭐
-            if not ticket.triage_required and ticket.category_ml_suggested:
+            category_for_assignment = (
+                ticket.category_ensemble
+                or ticket.category_ml_suggested
+                or ticket.category_llm_suggested
+            )
+            if not ticket.triage_required and category_for_assignment:
                 full_text = f"{ticket.title}\n{ticket.description}"
 
                 # Витягуємо LLM suggestions з ml_result
@@ -118,8 +114,8 @@ class TicketService:
                 # Викликаємо Smart Assignment Service (Hybrid Approach)
                 assignment_result = smart_assignment_service.find_best_assignee(
                     ticket_text=full_text,
-                    priority=ml_result.get("priority_ensemble") or ticket.priority_manual.value,
-                    category=ticket.category_ml_suggested.value,
+                    priority=(ml_result.get("priority_ensemble") or ticket.priority_manual).value,
+                    category=category_for_assignment.value,
                     department_id=ticket.department_id,
                     llm_team=llm_team,
                     llm_assignee=llm_assignee,
@@ -142,20 +138,7 @@ class TicketService:
                           f"з confidence {assignment_result['confidence']:.2f}")
 
             # 4. Визначення статусу
-            if ticket.triage_required:
-                ticket.status = StatusEnum.TRIAGE
-                ticket.self_assign_locked = True  # Блокуємо self-assign до тріажу
-
-                # Автоматично призначити на LEAD департаменту
-                if ticket.department_id:
-                    from app.models.department import Department
-                    dept = db.query(Department).filter(Department.id == ticket.department_id).first()
-                    if dept and dept.lead_user_id:
-                        ticket.assigned_to_user_id = dept.lead_user_id
-                        ticket.auto_assigned = False  # Це системне призначення, не ML
-                        print(f"[TRIAGE AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено на LEAD департаменту (user_id: {dept.lead_user_id})")
-            else:
-                ticket.status = StatusEnum.NEW
+            TicketService._apply_post_ml_status(ticket, db)
 
         else:
             # ML вимкнено - відразу тріаж
@@ -163,6 +146,7 @@ class TicketService:
             ticket.triage_reason = TriageReasonEnum.ML_DISABLED
             ticket.status = StatusEnum.TRIAGE
             ticket.self_assign_locked = True
+            ticket.llm_enrichment_required = False
 
             # Автоматично призначити на LEAD департаменту
             if ticket.department_id:
@@ -320,6 +304,120 @@ class TicketService:
         return ticket
 
     @staticmethod
+    def _run_ml_pipeline(
+        ticket: Ticket,
+        db: Session,
+        *,
+        skip_llm: bool = False,
+    ) -> Dict:
+        ml_result = ml_service.predict_ticket(
+            title=ticket.title,
+            description=ticket.description,
+            db=db,
+            ticket_id=ticket.id,
+            skip_llm=skip_llm,
+        )
+        TicketService._apply_ml_result(ticket, ml_result)
+        return ml_result
+
+    @staticmethod
+    def _apply_ml_result(
+        ticket: Ticket,
+        ml_result: Dict,
+    ) -> None:
+        ticket.priority_ml_suggested = ml_result.get("priority_ml_suggested")
+        ticket.priority_ml_confidence = ml_result.get("priority_ml_confidence")
+        ticket.category_ml_suggested = ml_result.get("category_ml_suggested")
+        ticket.category_ml_confidence = ml_result.get("category_ml_confidence")
+        ticket.category_llm_suggested = ml_result.get("category_llm_suggested")
+        ticket.category_llm_confidence = ml_result.get("category_llm_confidence")
+        ticket.category_ensemble = ml_result.get("category_ensemble")
+        ticket.category_ensemble_confidence = ml_result.get("category_ensemble_confidence")
+        ticket.category_ensemble_strategy = ml_result.get("category_ensemble_strategy")
+        ticket.category_ensemble_reasoning = ml_result.get("category_ensemble_reasoning")
+        ticket.priority_ensemble = ml_result.get("priority_ensemble")
+        ticket.ensemble_confidence = ml_result.get("ensemble_confidence")
+        ticket.ensemble_strategy = ml_result.get("ensemble_strategy")
+        ticket.ensemble_reasoning = ml_result.get("ensemble_reasoning")
+        ticket.triage_required = ml_result.get("triage_required", False)
+        ticket.triage_reason = ml_result.get("triage_reason")
+        ticket.ml_model_version = ml_result.get("ml_model_version")
+        if ml_result.get("llm_skipped"):
+            ticket.llm_enrichment_required = True
+        else:
+            ticket.llm_enrichment_required = False
+            ticket.llm_enriched_at = datetime.utcnow()
+
+    @staticmethod
+    def _apply_post_ml_status(ticket: Ticket, db: Session) -> None:
+        if ticket.triage_required:
+            ticket.status = StatusEnum.TRIAGE
+            ticket.self_assign_locked = True
+
+            if ticket.department_id:
+                from app.models.department import Department
+
+                dept = (
+                    db.query(Department)
+                    .filter(Department.id == ticket.department_id)
+                    .first()
+                )
+                if dept and dept.lead_user_id:
+                    ticket.assigned_to_user_id = dept.lead_user_id
+                    ticket.auto_assigned = False
+                    print(
+                        f"[TRIAGE AUTO-ASSIGN] Тікет #{ticket.incident_id} призначено на LEAD департаменту "
+                        f"(user_id: {dept.lead_user_id})"
+                    )
+        else:
+            ticket.status = StatusEnum.NEW
+            ticket.self_assign_locked = False
+
+    @staticmethod
+    def run_llm_enrichment_task(ticket_id: int) -> None:
+        db = SessionLocal()
+        try:
+            ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+            if not ticket or not ticket.llm_enrichment_required:
+                return
+
+            ml_result = TicketService._run_ml_pipeline(ticket, db, skip_llm=False)
+            TicketService._apply_post_ml_status(ticket, db)
+
+            # Виконати smart-assignment повторно лише якщо ще немає виконавця
+            if (
+                not ticket.triage_required
+                and not ticket.assigned_to_user_id
+                and ticket.category_ensemble
+            ):
+                full_text = f"{ticket.title}\n{ticket.description}"
+                llm_data = ml_result.get("llm_result") or {}
+                assignment_result = smart_assignment_service.find_best_assignee(
+                    ticket_text=full_text,
+                    priority=(ml_result.get("priority_ensemble") or ticket.priority_manual).value,
+                    category=ticket.category_ensemble.value,
+                    department_id=ticket.department_id,
+                    llm_team=llm_data.get("team"),
+                    llm_assignee=llm_data.get("assignee"),
+                    db=db,
+                )
+                if assignment_result.get("assignee_id"):
+                    ticket.assigned_to_user_id = assignment_result["assignee_id"]
+                    ticket.auto_assigned = True
+                    ticket.assignment_method = assignment_result["method"]
+                    ticket.assignment_confidence = assignment_result["confidence"]
+                    ticket.assignment_reasoning = assignment_result["reasoning"]
+                    ticket.assignment_alternatives = json.dumps(assignment_result["alternatives"])
+
+            ticket.llm_enrichment_required = False
+            ticket.llm_enriched_at = datetime.utcnow()
+            db.commit()
+        except Exception as exc:
+            print(f"[ML] Background LLM enrichment failed for ticket {ticket_id}: {exc}")
+        finally:
+            db.close()
+
+    @staticmethod
     def _record_priority_feedback(
         db: Session,
         ticket: Ticket,
@@ -343,6 +441,12 @@ class TicketService:
                 priority_confidence=ticket.priority_ml_confidence,
                 category_predicted=ticket.category_ml_suggested,
                 category_confidence=ticket.category_ml_confidence,
+                category_llm_predicted=ticket.category_llm_suggested,
+                category_llm_confidence=ticket.category_llm_confidence,
+                ensemble_category=ticket.category_ensemble,
+                ensemble_category_confidence=ticket.category_ensemble_confidence,
+                ensemble_category_strategy=ticket.category_ensemble_strategy,
+                ensemble_category_reasoning=ticket.category_ensemble_reasoning,
                 triage_reason=ticket.triage_reason,
             )
             db.add(log_entry)
@@ -360,6 +464,9 @@ class TicketService:
         if ticket.category_ml_suggested and not log_entry.category_predicted:
             log_entry.category_predicted = ticket.category_ml_suggested
             log_entry.category_confidence = ticket.category_ml_confidence
+        if ticket.category_llm_suggested and not log_entry.category_llm_predicted:
+            log_entry.category_llm_predicted = ticket.category_llm_suggested
+            log_entry.category_llm_confidence = ticket.category_llm_confidence
 
         db.flush()
 
@@ -397,6 +504,8 @@ class TicketService:
                 priority_confidence=ticket.priority_ml_confidence,
                 category_predicted=ticket.category_ml_suggested,
                 category_confidence=ticket.category_ml_confidence,
+                category_llm_predicted=ticket.category_llm_suggested,
+                category_llm_confidence=ticket.category_llm_confidence,
                 priority_final=ticket.priority_manual,
                 category_final=ticket.category,
                 triage_reason=ticket.triage_reason,

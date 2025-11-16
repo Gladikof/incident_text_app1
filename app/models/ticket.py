@@ -42,6 +42,12 @@ class Ticket(Base):
     # === ML поля - Category ===
     category_ml_suggested = Column(SQLEnum(CategoryEnum), nullable=True)
     category_ml_confidence = Column(Float, nullable=True)  # 0..1
+    category_llm_suggested = Column(SQLEnum(CategoryEnum), nullable=True)
+    category_llm_confidence = Column(Float, nullable=True)
+    category_ensemble = Column(SQLEnum(CategoryEnum), nullable=True)
+    category_ensemble_confidence = Column(Float, nullable=True)
+    category_ensemble_strategy = Column(String(50), nullable=True)
+    category_ensemble_reasoning = Column(Text, nullable=True)
     category_accepted = Column(Boolean, default=False)
 
     # === ML метадані ===
@@ -84,6 +90,8 @@ class Ticket(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     resolved_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, nullable=True)
+    llm_enrichment_required = Column(Boolean, default=False, nullable=False)
+    llm_enriched_at = Column(DateTime, nullable=True)
 
     # === Relationships ===
     created_by = relationship("User", foreign_keys=[created_by_user_id], back_populates="created_tickets")

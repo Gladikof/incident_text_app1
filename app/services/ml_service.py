@@ -1,14 +1,13 @@
 """
-ML Service - інтеграція існуючих ML моделей з новою базою даних.
-Відповідає за виклик ML/LLM пайплайну та логування результатів.
+ML Service - інтеграція ML/LLM пайплайна з базою даних.
 """
-from typing import Dict, Optional, Tuple
+import re
+from typing import Dict, Optional
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.core.enums import PriorityEnum, CategoryEnum, TriageReasonEnum, MLModeEnum
-from app.models.ticket import Ticket
+from app.core.enums import PriorityEnum, CategoryEnum, TriageReasonEnum
 from app.models.ml_log import MLPredictionLog
 from app.models.settings import SystemSettings
 from app.ml_model import ml_model
@@ -18,7 +17,7 @@ from app.services.ensemble_service import ensemble_service
 
 class MLService:
     """
-    Сервіс для ML-класифікації тікетів.
+    Сервіс для ML-класифікації тікетів та логування результатів.
     """
 
     @staticmethod
@@ -27,26 +26,13 @@ class MLService:
         description: str,
         db: Session,
         ticket_id: Optional[int] = None,
+        skip_llm: bool = False,
     ) -> Dict:
         """
-        Виконує ML-класифікацію тікета:
-        1. LLM класифікація (category, priority, urgency, team, assignee)
-        2. ML текстова модель (priority prediction)
-        3. Порівняння з порогами впевненості
-        4. Логування результатів
-
-        Args:
-            title: Заголовок тікета
-            description: Опис тікета
-            db: Database session
-            ticket_id: ID тікета (якщо вже створений)
-
-        Returns:
-            Dict з ML predictions та metadata
+        Виконує гібридну класифікацію (ML + LLM) та повертає словник із результатами.
         """
         settings = MLService._get_settings(db)
 
-        # Якщо ML вимкнено
         if not settings.feature_ml_enabled:
             return {
                 "ml_enabled": False,
@@ -54,156 +40,168 @@ class MLService:
                 "priority_ml_confidence": None,
                 "category_ml_suggested": None,
                 "category_ml_confidence": None,
+                "category_llm_suggested": None,
+                "category_llm_confidence": None,
                 "triage_required": True,
                 "triage_reason": TriageReasonEnum.ML_DISABLED,
                 "ml_model_version": None,
+                "llm_result": None,
+                "llm_skipped": skip_llm,
             }
 
-        # 1. LLM класифікація
-        llm_result = None
-        category_ml = None
-        category_conf = None
+        # --- LLM ---
+        llm_result: Optional[dict] = None
+        llm_priority: Optional[PriorityEnum] = None
+        llm_priority_conf: Optional[float] = None
+        llm_category: Optional[CategoryEnum] = None
+        llm_category_conf: Optional[float] = None
 
-        try:
-            llm_result = route_with_llm(title, description)
-            # llm_result містить: category, priority, urgency, team, assignee
-            category_ml = MLService._map_category(llm_result.get("category"))
-            # Припускаємо, що LLM має високу впевненість (0.8)
-            category_conf = 0.8
-        except Exception as e:
-            print(f"[ML] LLM routing error: {e}")
-            category_ml = None
-            category_conf = None
-
-        # 2. ML модель для пріоритету
-        priority_ml = None
-        priority_conf = None
-        ml_model_version = None
-
-        full_text = f"{title}\n{description}".strip()
-        if full_text and ml_model.model is not None:
+        if not skip_llm:
             try:
-                ml_label, ml_conf = ml_model.predict_priority(full_text)
-                # ml_label: "high", "medium", "low"
-                priority_ml = MLService._map_priority(ml_label)
-                priority_conf = float(ml_conf)
-                ml_model_version = getattr(ml_model, "version", "1.0")
-            except Exception as e:
-                print(f"[ML] Priority prediction error: {e}")
-                priority_ml = None
-                priority_conf = None
+                llm_result = route_with_llm(title, description)
+                if llm_result:
+                    llm_priority = MLService._map_llm_priority(llm_result.get("priority"))
+                    llm_priority_conf = 0.8 if llm_priority else None
+                    llm_category = MLService._map_category(llm_result.get("category"))
+                    llm_category_conf = 0.8 if llm_category else None
+            except Exception as exc:
+                print(f"[ML] LLM routing error: {exc}")
+                llm_result = None
 
-        
-        if full_text and getattr(ml_model, "category_model", None) is not None:
-            try:
-                cat_label, cat_conf = ml_model.predict_category(full_text)
-                category_ml = MLService._map_category(cat_label)
-                category_conf = float(cat_conf)
-            except Exception as e:
-                print(f"[ML] Category prediction error: {e}")
+        # --- ML ---
+        priority_ml: Optional[PriorityEnum] = None
+        priority_conf: Optional[float] = None
+        category_ml: Optional[CategoryEnum] = None
+        category_conf: Optional[float] = None
+        ml_model_version: Optional[str] = None
 
-# 3. LLM priority (витягуємо з llm_result)
-        llm_priority_ml = None
-        llm_priority_conf = None
-        if llm_result and llm_result.get("priority"):
-            llm_priority_str = llm_result.get("priority")  # "P1", "P2", "P3"
-            llm_priority_ml = MLService._map_llm_priority(llm_priority_str)
-            # Припускаємо високу впевненість для LLM (0.8)
-            llm_priority_conf = 0.8
+        text_blob = f"{title}\n{description}".strip()
+        text_quality = MLService._check_text_quality(title, description)
+        if text_blob:
+            if ml_model.model is not None:
+                try:
+                    ml_label, ml_conf = ml_model.predict_priority(text_blob)
+                    priority_ml = MLService._map_priority(ml_label)
+                    priority_conf = float(ml_conf)
+                    ml_model_version = getattr(ml_model, "version", "1.0")
+                except Exception as exc:
+                    print(f"[ML] Priority prediction error: {exc}")
+            if getattr(ml_model, "category_model", None) is not None:
+                try:
+                    cat_label, cat_conf = ml_model.predict_category(text_blob)
+                    category_ml = MLService._map_category(cat_label)
+                    category_conf = float(cat_conf)
+                except Exception as exc:
+                    print(f"[ML] Category prediction error: {exc}")
 
-        # 4. ENSEMBLE DECISION - комбінуємо ML та LLM predictions
+        # --- Ensembles ---
         (
             ensemble_priority,
             ensemble_confidence,
             triage_required,
             triage_reason,
-            ensemble_reasoning
+            ensemble_reasoning,
         ) = ensemble_service.combine_predictions(
             ml_priority=priority_ml,
             ml_confidence=priority_conf,
-            llm_priority=llm_priority_ml,
-            llm_confidence=llm_priority_conf
+            llm_priority=llm_priority,
+            llm_confidence=llm_priority_conf,
         )
 
-        # Отримуємо додаткову статистику
+        (
+            category_ensemble,
+            category_ensemble_confidence,
+            category_ensemble_strategy,
+            category_ensemble_reasoning,
+        ) = ensemble_service.combine_categories(
+            ml_category=category_ml,
+            ml_confidence=category_conf,
+            llm_category=llm_category,
+            llm_confidence=llm_category_conf,
+        )
+
+        quality_note: Optional[str] = None
+        if not text_quality["is_meaningful"]:
+            triage_required = True
+            triage_reason = TriageReasonEnum.MANUAL_FLAG
+            quality_note = text_quality["reason"]
+            if ensemble_reasoning:
+                ensemble_reasoning = f"{ensemble_reasoning} | text_quality={quality_note}"
+            else:
+                ensemble_reasoning = f"text_quality={quality_note}"
+
         ensemble_stats = ensemble_service.get_strategy_stats(
             ml_priority=priority_ml,
             ml_confidence=priority_conf,
-            llm_priority=llm_priority_ml,
-            llm_confidence=llm_priority_conf
+            llm_priority=llm_priority,
+            llm_confidence=llm_priority_conf,
         )
 
-        # Перевіряємо category confidence
-        if category_conf is not None and category_conf < settings.ml_conf_threshold_category:
-            if not triage_required:  # Якщо ще не потрібен
-                triage_required = True
-            if triage_reason is None:
-                triage_reason = TriageReasonEnum.LOW_CATEGORY_CONF
-
-        # Low priority confidence fallback
-        if priority_conf is not None and priority_conf < settings.ml_conf_threshold_priority:
-            triage_required = True
-            if triage_reason is None:
-                triage_reason = TriageReasonEnum.LOW_PRIORITY_CONF
-
-        # 5. Логування результатів
+        # --- Logging ---
         if ticket_id:
+            notes_value = []
+            if llm_result:
+                notes_value.append(str(llm_result))
+            if quality_note:
+                notes_value.append(f"text_quality={quality_note}")
+            combined_notes = " | ".join(notes_value) if notes_value else None
+
             log_entry = MLPredictionLog(
                 ticket_id=ticket_id,
                 model_version=ml_model_version or "unknown",
-                # ML predictions
                 priority_predicted=priority_ml,
                 priority_confidence=priority_conf,
-                # LLM predictions
-                priority_llm_predicted=llm_priority_ml,
+                priority_llm_predicted=llm_priority,
                 priority_llm_confidence=llm_priority_conf,
-                # Category
                 category_predicted=category_ml,
                 category_confidence=category_conf,
-                # Ensemble decision
+                category_llm_predicted=llm_category,
+                category_llm_confidence=llm_category_conf,
                 ensemble_priority=ensemble_priority,
                 ensemble_confidence=ensemble_confidence,
-                ensemble_strategy=ensemble_stats.get("strategy_used"),
+                ensemble_strategy=ensemble_stats.get("strategy_used") if priority_ml or llm_priority else None,
                 ensemble_reasoning=ensemble_reasoning,
-                # Triage
+                ensemble_category=category_ensemble,
+                ensemble_category_confidence=category_ensemble_confidence,
+                ensemble_category_strategy=category_ensemble_strategy,
+                ensemble_category_reasoning=category_ensemble_reasoning,
                 triage_reason=triage_reason,
-                # Other
-                input_text=f"{title}\n{description}",
-                notes=str(llm_result) if llm_result else None,
+                input_text=text_blob,
+                notes=combined_notes,
             )
             db.add(log_entry)
             db.commit()
 
         return {
             "ml_enabled": True,
-            # ML predictions
             "priority_ml_suggested": priority_ml,
             "priority_ml_confidence": priority_conf,
-            # LLM predictions
-            "priority_llm_suggested": llm_priority_ml,
+            "priority_llm_suggested": llm_priority,
             "priority_llm_confidence": llm_priority_conf,
-            # ENSEMBLE decision (основне рішення!)
             "priority_ensemble": ensemble_priority,
             "ensemble_confidence": ensemble_confidence,
-            "ensemble_strategy": ensemble_stats.get("strategy_used"),
+            "ensemble_strategy": ensemble_stats.get("strategy_used") if priority_ml or llm_priority else None,
             "ensemble_reasoning": ensemble_reasoning,
-            # Category
             "category_ml_suggested": category_ml,
             "category_ml_confidence": category_conf,
-            # Triage
+            "category_llm_suggested": llm_category,
+            "category_llm_confidence": llm_category_conf,
+            "category_ensemble": category_ensemble,
+            "category_ensemble_confidence": category_ensemble_confidence,
+            "category_ensemble_strategy": category_ensemble_strategy,
+            "category_ensemble_reasoning": category_ensemble_reasoning,
             "triage_required": triage_required,
             "triage_reason": triage_reason,
-            # Other
             "ml_model_version": ml_model_version,
-            "llm_result": llm_result,  # Додаткові дані (team, assignee тощо)
+            "llm_result": llm_result,
+            "llm_skipped": skip_llm,
+            "text_quality_flag": quality_note,
         }
 
     @staticmethod
     def _get_settings(db: Session) -> SystemSettings:
-        """Отримує системні налаштування (singleton)."""
         settings = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
         if not settings:
-            # Створюємо дефолтні налаштування
             settings = SystemSettings(id=1)
             db.add(settings)
             db.commit()
@@ -212,17 +210,15 @@ class MLService:
 
     @staticmethod
     def _map_priority(ml_label: str) -> Optional[PriorityEnum]:
-        """Маппінг ML labels (high/medium/low) -> PriorityEnum (P1/P2/P3)."""
         mapping = {
             "high": PriorityEnum.P1,
             "medium": PriorityEnum.P2,
             "low": PriorityEnum.P3,
         }
-        return mapping.get(ml_label.lower())
+        return mapping.get((ml_label or "").lower())
 
     @staticmethod
-    def _map_llm_priority(llm_label: str) -> Optional[PriorityEnum]:
-        """Маппінг LLM priority labels (P1/P2/P3) -> PriorityEnum."""
+    def _map_llm_priority(llm_label: Optional[str]) -> Optional[PriorityEnum]:
         if not llm_label:
             return None
         mapping = {
@@ -233,22 +229,45 @@ class MLService:
         return mapping.get(llm_label.upper())
 
     @staticmethod
-    def _map_category(llm_category: Optional[str]) -> Optional[CategoryEnum]:
-        """Маппінг LLM категорій -> CategoryEnum."""
-        if not llm_category:
+    def _map_category(label: Optional[str]) -> Optional[CategoryEnum]:
+        if not label:
             return None
-
-        # Припускаємо, що LLM повертає категорії як в CategoryEnum
-        # Або робимо маппінг
         mapping = {
             "hardware": CategoryEnum.HARDWARE,
             "software": CategoryEnum.SOFTWARE,
             "network": CategoryEnum.NETWORK,
             "access": CategoryEnum.ACCESS,
             "other": CategoryEnum.OTHER,
-            "workstation": CategoryEnum.HARDWARE,  # LLM може повернути "Workstation"
+            "workstation": CategoryEnum.HARDWARE,
         }
-        return mapping.get(llm_category.lower(), CategoryEnum.OTHER)
+        return mapping.get(label.lower(), CategoryEnum.OTHER)
+
+    @staticmethod
+    def _check_text_quality(title: Optional[str], description: Optional[str]) -> Dict[str, Optional[str]]:
+        """
+        Simple heuristic detection for meaningless tickets.
+        """
+        text = f"{title or ''} {description or ''}".strip()
+        normalized = re.sub(r"\s+", " ", text)
+        if not normalized:
+            return {"is_meaningful": False, "reason": "empty_text"}
+
+        if len(normalized) < 30:
+            return {"is_meaningful": False, "reason": "too_short"}
+
+        words = [w for w in re.split(r"[^\w]+", normalized) if w]
+        if len(words) < 4:
+            return {"is_meaningful": False, "reason": "too_few_words"}
+
+        alpha_chars = sum(1 for ch in normalized if ch.isalpha())
+        if not alpha_chars or (alpha_chars / len(normalized)) < 0.5:
+            return {"is_meaningful": False, "reason": "low_alpha_ratio"}
+
+        gibberish = {"test", "aaa", "ffff", "lorem", "asdf", "na", "null"}
+        if words and all(word.lower() in gibberish for word in words):
+            return {"is_meaningful": False, "reason": "gibberish"}
+
+        return {"is_meaningful": True, "reason": None}
 
 
 ml_service = MLService()

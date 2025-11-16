@@ -1,7 +1,8 @@
 """Endpoints for exposing ML/LLM prediction logs to the UI."""
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import and_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -18,6 +19,14 @@ def list_ml_logs(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     ticket_id: Optional[int] = Query(None, description="Filter by ticket id"),
+    ticket_from: Optional[int] = Query(None, ge=1, description="Minimum ticket id"),
+    ticket_to: Optional[int] = Query(None, ge=1, description="Maximum ticket id"),
+    feedback_type: Literal["all", "explicit", "implicit"] = Query(
+        "all", description="Select only explicit or implicit feedback rows"
+    ),
+    priority_pair: Literal["all", "match", "mismatch"] = Query(
+        "all", description="Compare ML priority vs LLM priority"
+    ),
     current_user: User = Depends(require_lead_or_admin),
     db: Session = Depends(get_db),
 ) -> List[MLPredictionLogOut]:
@@ -32,6 +41,30 @@ def list_ml_logs(
 
     if ticket_id:
         query = query.filter(MLPredictionLog.ticket_id == ticket_id)
+    else:
+        if ticket_from:
+            query = query.filter(MLPredictionLog.ticket_id >= ticket_from)
+        if ticket_to:
+            query = query.filter(MLPredictionLog.ticket_id <= ticket_to)
+
+    if feedback_type == "explicit":
+        query = query.filter(MLPredictionLog.priority_feedback_reason.isnot(None))
+    elif feedback_type == "implicit":
+        query = query.filter(
+            and_(
+                MLPredictionLog.priority_feedback_reason.is_(None),
+                MLPredictionLog.priority_final == MLPredictionLog.priority_predicted,
+            )
+        )
+
+    if priority_pair == "match":
+        query = query.filter(
+            MLPredictionLog.priority_predicted == MLPredictionLog.priority_llm_predicted
+        )
+    elif priority_pair == "mismatch":
+        query = query.filter(
+            MLPredictionLog.priority_predicted != MLPredictionLog.priority_llm_predicted
+        )
 
     logs = query.offset(offset).limit(limit).all()
 
@@ -55,6 +88,19 @@ def list_ml_logs(
                 priority_feedback_author=log.feedback_author,
                 priority_feedback_recorded_at=log.priority_feedback_recorded_at,
                 triage_reason=log.triage_reason,
+                category_predicted=log.category_predicted,
+                category_confidence=log.category_confidence,
+                category_llm_predicted=log.category_llm_predicted,
+                category_llm_confidence=log.category_llm_confidence,
+                category_final=log.category_final,
+                ensemble_strategy=log.ensemble_strategy,
+                ensemble_confidence=log.ensemble_confidence,
+                ensemble_reasoning=log.ensemble_reasoning,
+                ensemble_category=log.ensemble_category,
+                ensemble_category_confidence=log.ensemble_category_confidence,
+                ensemble_category_strategy=log.ensemble_category_strategy,
+                ensemble_category_reasoning=log.ensemble_category_reasoning,
+                input_text=log.input_text,
             )
         )
 

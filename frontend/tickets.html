@@ -258,6 +258,7 @@
         }
 
         function renderTicketDetails(ticket) {
+            window.currentTicket = ticket;
             document.getElementById('modal-title').textContent = ticket.incident_id;
 
             const createdDate = new Date(ticket.created_at).toLocaleString('uk-UA');
@@ -310,16 +311,41 @@
             const priorityOptions = ['P1', 'P2', 'P3'];
             const manualPriority = ticket.priority_manual || ticket.priority_ml_suggested || 'P3';
             const priorityDropdown = `
-                <select id="priority-change" class="form-input" style="width: auto; display: inline-block; margin-right: 0.5rem;">
-                    ${priorityOptions.map(p => `<option value="${p}" ${p === manualPriority ? 'selected' : ''}>${p}</option>`).join('')}
-                </select>
-                <button onclick="updatePriority(${ticket.id})" class="btn" style="background: var(--primary);">
-                    💾 Зберегти пріоритет
-                </button>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+                    <select id="priority-change" class="form-input" style="width: auto; min-width: 120px;">
+                        ${priorityOptions.map(p => `<option value="${p}" ${p === manualPriority ? 'selected' : ''}>${p}</option>`).join('')}
+                    </select>
+                    <button onclick="updatePriority(${ticket.id}, '${manualPriority}')" class="btn" style="background: var(--primary);">
+                        💾 Зберегти пріоритет
+                    </button>
+                </div>
+                <div style="margin-top: 0.75rem;">
+                    <label class="form-label" for="priority-reason" style="margin-bottom: 0.25rem;">Пояснення зміни пріоритету</label>
+                    <textarea id="priority-reason" class="form-input" rows="3" placeholder="Опишіть, чому потрібно змінити пріоритет (мін. 5 символів)."></textarea>
+                    <small style="color: var(--gray-light); display: block; margin-top: 0.25rem;">
+                        Обов'язково, якщо новий пріоритет відрізняється від поточного значення (${manualPriority}).
+                    </small>
+                </div>
             `;
 
             const categoryOptions = ['Hardware', 'Software', 'Network', 'Access', 'Other'];
             const selectedCategory = ticket.category || ticket.category_ml_suggested || 'Other';
+            const currentCategoryBadge = ticket.category
+                ? `<span class="badge" style="background: #0f766e; color: #d1fae5;">${ticket.category}</span>`
+                : '<span class="badge badge-muted">Не призначено</span>';
+            const categoryManualControls = `
+                <div style="margin-top: 1rem;">
+                    <label class="form-label" for="category-change" style="margin-bottom: 0.25rem;">Категорія (Manual)</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+                        <select id="category-change" class="form-input" style="min-width: 160px;">
+                            ${categoryOptions.map(c => `<option value="${c}" ${c === selectedCategory ? 'selected' : ''}>${c}</option>`).join('')}
+                        </select>
+                        <button onclick="updateCategory(${ticket.id})" class="btn btn-secondary">
+                            🏷️ Зберегти категорію
+                        </button>
+                    </div>
+                </div>
+            `;
 
             const triageForm = (ticket.triage_required && isLeadOrAdmin) ? `
                 <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
@@ -348,6 +374,20 @@
                     </div>
                 </div>
             ` : '';
+
+            const historySection = `
+                <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; font-weight: 600;">Історія змін</h4>
+                        ${isLeadOrAdmin ? `<button class="btn btn-secondary btn-sm" onclick="loadTicketHistory(${ticket.id})">Оновити</button>` : ''}
+                    </div>
+                    <div id="history-content-${ticket.id}" style="margin-top: 1rem;">
+                        ${isLeadOrAdmin
+                            ? '<div style="color: var(--gray-light); font-size: 0.9rem;">Завантаження історії...</div>'
+                            : '<div style="color: var(--gray-light); font-size: 0.9rem;">Доступ лише для LEAD/ADMIN.</div>'}
+                    </div>
+                </div>
+            `;
 
             const modalContent = `
                 <div style="display: grid; gap: 1.5rem;">
@@ -378,6 +418,11 @@
                             <div style="margin-top: 1rem;">
                                 ${priorityDropdown}
                             </div>
+                            <div style="margin-top: 1rem;">
+                                <h4 style="margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--gray-light);">Поточна категорія</h4>
+                                ${currentCategoryBadge}
+                            </div>
+                            ${categoryManualControls}
                         </div>
                     </div>
 
@@ -404,6 +449,7 @@
                     </div>
 
                     ${triageForm}
+                    ${historySection}
 
                     <!-- Metadata -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.875rem; color: var(--gray-light);">
@@ -512,15 +558,101 @@
             }
         }
 
-        async function updatePriority(ticketId) {
+        async function updatePriority(ticketId, currentPriority) {
             const newPriority = document.getElementById('priority-change').value;
+            const reasonInput = document.getElementById('priority-reason');
+            const reasonText = reasonInput ? reasonInput.value.trim() : '';
+            const baseline = currentPriority || (window.currentTicket ? window.currentTicket.priority_manual : null);
+
+            if (baseline && newPriority !== baseline && reasonText.length < 5) {
+                alert('Потрібно вказати причину зміни пріоритету (мінімум 5 символів).');
+                return;
+            }
+
+            const payload = { priority_manual: newPriority };
+            if (!baseline || newPriority !== baseline) {
+                payload.priority_change_reason = reasonText;
+            }
+
             try {
-                await api.updateTicket(ticketId, { priority_manual: newPriority });
+                await api.updateTicket(ticketId, payload);
                 alert('Пріоритет оновлено!');
                 await openTicketModal(ticketId); // Reload modal
                 loadTickets(); // Reload list
             } catch (error) {
                 alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function updateCategory(ticketId) {
+            const select = document.getElementById('category-change');
+            if (!select) {
+                alert('Не знайдено поле категорії.');
+                return;
+            }
+            const newCategory = select.value;
+
+            try {
+                await api.updateTicket(ticketId, { category: newCategory });
+                alert('Категорію оновлено!');
+                await openTicketModal(ticketId);
+                loadTickets();
+            } catch (error) {
+                alert('Помилка: ' + error.message);
+            }
+        }
+
+        async function loadTicketHistory(ticketId) {
+            const container = document.getElementById(`history-content-${ticketId}`);
+            if (!container) return;
+
+            container.innerHTML = '<div style="color: var(--gray-light); font-size: 0.9rem;">Завантаження історії...</div>';
+
+            try {
+                const logs = await api.getMlLogs({ ticketId, limit: 20 });
+
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div style="color: var(--gray-light); font-size: 0.9rem;">Ще не було змін.</div>';
+                    return;
+                }
+
+                const items = logs.map(log => {
+                    const created = new Date(log.created_at).toLocaleString('uk-UA');
+                    const author = log.priority_feedback_author
+                        ? (log.priority_feedback_author.full_name || log.priority_feedback_author.email)
+                        : 'Система';
+                    const predicted = log.priority_predicted || '—';
+                    const llmValue = log.priority_llm_predicted || '—';
+                    const finalValue = log.priority_final || '—';
+                    const prev = log.priority_feedback_previous ? `Попередній: ${log.priority_feedback_previous}` : '';
+                    const reason = log.priority_feedback_reason
+                        ? `<div style="margin-top: 0.25rem;">Причина: ${log.priority_feedback_reason}</div>`
+                        : '';
+                    const triage = log.triage_reason
+                        ? `<span class="badge" style="background: #f97316; color: #fff; margin-left: 0.5rem;">${log.triage_reason}</span>`
+                        : '';
+
+                    return `
+                        <div style="border-bottom: 1px solid var(--border); padding: 0.75rem 0;">
+                            <div style="font-size: 0.85rem; color: var(--gray-light);">
+                                ${created} · ${author} ${triage}
+                            </div>
+                            <div style="margin-top: 0.25rem; font-weight: 600;">
+                                ML: ${predicted} → LLM: ${llmValue} → Final: ${finalValue}
+                            </div>
+                            ${prev ? `<div style="font-size: 0.85rem; color: var(--gray-light); margin-top: 0.25rem;">${prev}</div>` : ''}
+                            ${reason}
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = `<div style="max-height: 240px; overflow-y: auto;">${items}</div>`;
+            } catch (error) {
+                console.error('[History] Failed to load logs:', error);
+                const msg = (error && error.message && error.message.toLowerCase().includes('permission'))
+                    ? 'Історію можуть переглядати лише LEAD/ADMIN.'
+                    : `Не вдалося завантажити історію: ${error.message}`;
+                container.innerHTML = `<div style="color: var(--danger); font-size: 0.9rem;">${msg}</div>`;
             }
         }
 

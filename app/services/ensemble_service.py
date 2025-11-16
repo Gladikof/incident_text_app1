@@ -8,7 +8,7 @@ Ensemble Service - розумне комбінування ML та LLM predictio
 4. Contradictory High Confidence - обидві впевнені але не згодні → triage
 """
 from typing import Optional, Tuple, Dict
-from app.core.enums import PriorityEnum, TriageReasonEnum
+from app.core.enums import PriorityEnum, CategoryEnum, TriageReasonEnum
 
 
 class EnsembleService:
@@ -293,4 +293,59 @@ class EnsembleService:
 
 
 # Глобальний інстанс
+    @staticmethod
+    def combine_categories(
+        ml_category: Optional[CategoryEnum],
+        ml_confidence: Optional[float],
+        llm_category: Optional[CategoryEnum],
+        llm_confidence: Optional[float],
+    ) -> Tuple[Optional[CategoryEnum], Optional[float], str, str]:
+        """
+        Комбінує категорії з ML та LLM без впливу на triage.
+        Повертає (final_category, confidence, strategy, reasoning)
+        """
+        if ml_category is None and llm_category is None:
+            return None, None, "CATEGORY_NONE", "Both ML and LLM categories unavailable"
+
+        if ml_category is not None and llm_category is None:
+            reason = f"Only ML category available ({ml_confidence or 0:.2f})"
+            return ml_category, ml_confidence, "CATEGORY_ML_ONLY", reason
+
+        if ml_category is None and llm_category is not None:
+            reason = f"Only LLM category available ({llm_confidence or 0:.2f})"
+            return llm_category, llm_confidence, "CATEGORY_LLM_ONLY", reason
+
+        assert ml_category is not None and llm_category is not None
+
+        if ml_category == llm_category:
+            if ml_confidence is not None and llm_confidence is not None:
+                combined_conf = (ml_confidence + llm_confidence) / 2
+            else:
+                combined_conf = ml_confidence or llm_confidence
+            return (
+                ml_category,
+                combined_conf,
+                "CATEGORY_AGREEMENT",
+                f"ML and LLM agree on {ml_category.value}",
+            )
+
+        ml_weight = ml_confidence or 0.0
+        llm_weight = llm_confidence or 0.0
+
+        if ml_weight == llm_weight:
+            return (
+                ml_category,
+                ml_confidence,
+                "CATEGORY_WEIGHTED_TIE",
+                "Equal confidence, preferring ML category",
+            )
+
+        if ml_weight > llm_weight:
+            reason = f"Weighted vote → ML wins ({ml_weight:.2f} vs {llm_weight:.2f})"
+            return ml_category, ml_confidence, "CATEGORY_WEIGHTED_ML", reason
+
+        reason = f"Weighted vote → LLM wins ({llm_weight:.2f} vs {ml_weight:.2f})"
+        return llm_category, llm_confidence, "CATEGORY_WEIGHTED_LLM", reason
+
+
 ensemble_service = EnsembleService()

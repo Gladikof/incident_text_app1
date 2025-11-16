@@ -136,11 +136,32 @@ class ApiClient {
         });
     }
 
-    async getMlLogs({ limit = 50, offset = 0, ticketId = null } = {}) {
-        const params = new URLSearchParams({ limit, offset });
+    async getMlLogs({
+        limit = 50,
+        offset = 0,
+        ticketId = null,
+        ticketFrom = null,
+        ticketTo = null,
+        feedbackType = 'all',
+        priorityPair = 'all',
+    } = {}) {
+        const params = new URLSearchParams({
+            limit,
+            offset,
+            feedback_type: feedbackType,
+            priority_pair: priorityPair,
+        });
+
         if (ticketId) {
             params.append('ticket_id', ticketId);
         }
+        if (!ticketId && ticketFrom) {
+            params.append('ticket_from', ticketFrom);
+        }
+        if (!ticketId && ticketTo) {
+            params.append('ticket_to', ticketTo);
+        }
+
         return this.request(`/ml/logs?${params.toString()}`);
     }
 

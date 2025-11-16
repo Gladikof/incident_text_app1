@@ -54,6 +54,7 @@ class TicketCreate(TicketBase):
     """Створення тікету"""
     department_id: Optional[int] = None
     priority_manual: Optional[PriorityEnum] = PriorityEnum.P3  # Дефолтний пріоритет
+    skip_llm: bool = False
 
 
 class TicketUpdate(BaseModel):
@@ -102,6 +103,11 @@ class TicketListItem(BaseModel):
     priority_ml_confidence: Optional[float] = None
     category_ml_suggested: Optional[CategoryEnum] = None
     category_ml_confidence: Optional[float] = None
+    category_llm_suggested: Optional[CategoryEnum] = None
+    category_llm_confidence: Optional[float] = None
+    category_ensemble: Optional[CategoryEnum] = None
+    category_ensemble_confidence: Optional[float] = None
+    llm_enrichment_required: bool = False
 
     # Triage
     triage_required: bool
@@ -136,12 +142,24 @@ class TicketOut(TicketBase):
     priority_ml_suggested: Optional[PriorityEnum] = None
     priority_ml_confidence: Optional[float] = None
     priority_accepted: bool = False
+    priority_ensemble: Optional[PriorityEnum] = None
+    ensemble_confidence: Optional[float] = None
+    ensemble_strategy: Optional[str] = None
+    ensemble_reasoning: Optional[str] = None
 
     category_ml_suggested: Optional[CategoryEnum] = None
     category_ml_confidence: Optional[float] = None
+    category_llm_suggested: Optional[CategoryEnum] = None
+    category_llm_confidence: Optional[float] = None
+    category_ensemble: Optional[CategoryEnum] = None
+    category_ensemble_confidence: Optional[float] = None
+    category_ensemble_strategy: Optional[str] = None
+    category_ensemble_reasoning: Optional[str] = None
     category_accepted: bool = False
 
     ml_model_version: Optional[str] = None
+    llm_enrichment_required: bool = False
+    llm_enriched_at: Optional[datetime] = None
 
     # Triage
     triage_required: bool

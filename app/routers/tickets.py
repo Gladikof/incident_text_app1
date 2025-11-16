@@ -2,7 +2,7 @@
 Tickets Router - API endpoints для роботи з тікетами.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -49,6 +49,7 @@ def _load_ticket_relationships(db: Session, ticket_id: int) -> Ticket:
 @router.post("", response_model=TicketOut, status_code=201)
 def create_ticket(
     ticket_data: TicketCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -69,7 +70,8 @@ def create_ticket(
         creator=current_user,
         db=db,
     )
-    # Reload with relationships
+    if ticket.llm_enrichment_required:
+        background_tasks.add_task(ticket_service.run_llm_enrichment_task, ticket.id)
     return _load_ticket_relationships(db, ticket.id)
 
 
@@ -372,26 +374,10 @@ def recalculate_ml(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    # Викликаємо ML заново
-    ml_result = ml_service.predict_ticket(
-        title=ticket.title,
-        description=ticket.description,
-        db=db,
-        ticket_id=ticket.id,
-    )
-
-    # Оновлюємо ML поля
-    ticket.priority_ml_suggested = ml_result["priority_ml_suggested"]
-    ticket.priority_ml_confidence = ml_result["priority_ml_confidence"]
-    ticket.category_ml_suggested = ml_result["category_ml_suggested"]
-    ticket.category_ml_confidence = ml_result["category_ml_confidence"]
-    ticket.ml_model_version = ml_result["ml_model_version"]
-    ticket.triage_required = ml_result["triage_required"]
-    ticket.triage_reason = ml_result["triage_reason"]
-
+    settings = ticket_service._get_settings(db)
+    ticket_service._run_ml_pipeline(ticket, db, skip_llm=False)
+    ticket_service._apply_post_ml_status(ticket, db)
     db.commit()
-
-    # Reload with relationships
     return _load_ticket_relationships(db, ticket_id)
 
 

@@ -27,6 +27,8 @@ class MLPredictionLog(Base):
     priority_llm_confidence = Column(Float, nullable=True)
     category_predicted = Column(SQLEnum(CategoryEnum), nullable=True)
     category_confidence = Column(Float, nullable=True)
+    category_llm_predicted = Column(SQLEnum(CategoryEnum), nullable=True)
+    category_llm_confidence = Column(Float, nullable=True)
 
     # Фінальні значення (що встановили вручну або застосували автоматично)
     priority_final = Column(SQLEnum(PriorityEnum), nullable=True)
@@ -50,6 +52,10 @@ class MLPredictionLog(Base):
     ensemble_confidence = Column(Float, nullable=True)  # Комбінована впевненість
     ensemble_strategy = Column(String(50), nullable=True)  # Яка стратегія використана
     ensemble_reasoning = Column(Text, nullable=True)  # Пояснення рішення
+    ensemble_category = Column(SQLEnum(CategoryEnum), nullable=True)
+    ensemble_category_confidence = Column(Float, nullable=True)
+    ensemble_category_strategy = Column(String(50), nullable=True)
+    ensemble_category_reasoning = Column(Text, nullable=True)
 
     # Метадані
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
